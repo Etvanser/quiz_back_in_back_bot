@@ -1,0 +1,28 @@
+{
+  "db_config": {
+    "id_bot": "quiz_bb_bot",
+    "db_file": "/home/abra/PycharmProjects/quiz_back_in_back_bot/database/quiz_bb_bot.db",
+    "tables": [
+      {
+        "table_name": "bot_settings",
+        "columns": {
+          "bot_id": "TEXT PRIMARY KEY",
+          "token": "TEXT NOT NULL",
+          "description": "TEXT"
+        }
+      },
+      {
+        "table_name": "users",
+        "columns": {
+          "user_id": "INTEGER PRIMARY KEY",
+          "username": "TEXT",
+          "first_name": "TEXT",
+          "last_name": "TEXT",
+          "join_date": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+          "is_admin": "INTEGER"
+        }
+      }
+    ],
+    "safe_mode": true
+  }
+}

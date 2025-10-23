@@ -12,6 +12,8 @@ class ConfigBot:
     """
     # Ключ бота
     token: str
+    # ID администраторов
+    admin_ids: list[int]
 
 
 class ConfigBotLoader(dict):

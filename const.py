@@ -12,4 +12,11 @@ CONFIG_BOT = CONFIG_DIR / "config_bot.json"
 LOGGER_DIR = ROOT_DIR / "logs"
 
 
+# Конфиг БД
+BD_CONFIG = CONFIG_DIR / "config_struct_bd.json"
+# Каталог БД
+BD_DIR = ROOT_DIR / "database"
+
+
+
 PathLike = Union[Path, str]

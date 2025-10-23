@@ -1,16 +1,18 @@
 import asyncio
 
-from core.engine import EngineBot
+from app import Application
 from core.routers import StartRouter
+from errors import ErrorCode
 
 
 async def run():
     """
     Запуск бота
     """
-    bot_engine = EngineBot()
-    return await bot_engine.start()
+    app = Application()
+
+    if await app.run() != ErrorCode.SUCCESSFUL:
+        print("Бот не запустился")
 
 if __name__ == "__main__":
-    bot = EngineBot()
     asyncio.run(run())
