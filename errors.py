@@ -12,3 +12,4 @@ class ErrorCode(IntEnum):
     FAILED_ERROR = 4         # Общая ошибка
     TOKEN_ERROR = 5          # Ошибка токена для бота
     ENGINE_INIT_ERROR = 6    # Ошибка инициализация движка
+    PARTIAL_SUCCESS = 7      # Частичный успех

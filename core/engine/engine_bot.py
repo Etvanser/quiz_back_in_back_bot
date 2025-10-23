@@ -1,7 +1,10 @@
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 
+from core import Config
 from core.database_manager.db_bot_settings_handler import DatabaseBotSettingsHandler
+from core.database_manager.db_user_handler import DatabaseUserHandler
+from core.middleware.auth_middleware import AuthMiddleware
 from core.router_recorder.router_recorder import RoutersRecorder
 from errors import ErrorCode
 from logger import Logger
@@ -18,7 +21,57 @@ class EngineBot:
         Создает экземпляр EngineBot
         """
         self._dp = Dispatcher(storage=MemoryStorage())
+        self._setup_middleware()
         self._dp.include_router(RoutersRecorder.setup_main_router())
+
+    def _setup_middleware(self) -> None:
+        """
+        Настройка middleware для бота
+        """
+        # Создаем экземпляр AuthMiddleware
+        auth_middleware = AuthMiddleware()
+
+        # Регистрируем middleware для всех типов сообщений
+        self._dp.message.middleware(auth_middleware)
+        self._dp.callback_query.middleware(auth_middleware)
+        # Можно добавить и для других типов событий при необходимости
+        # self._dp.edited_message.middleware(auth_middleware)
+        # self._dp.channel_post.middleware(auth_middleware)
+
+    async def _init_admins(self) -> ErrorCode:
+        """
+        Инициализация администраторов в БД
+
+        :return: Результат операции
+        """
+        try:
+            Logger().get_logger().info("Начало инициализации администраторов")
+
+            # Получаем список администраторов из конфига
+            admin_ids = Config().data.admin_ids
+
+            if not admin_ids:
+                Logger().get_logger().warning("Список администраторов пуст в конфигурации")
+                return ErrorCode.SUCCESSFUL
+
+            # Создаем обработчик пользователей
+            user_handler = DatabaseUserHandler()
+
+            # Инициализируем администраторов с передачей бота для получения данных
+            result = await user_handler.init_admin_users(admin_ids, self._bot)
+
+            if result == ErrorCode.SUCCESSFUL:
+                Logger().get_logger().info("Администраторы успешно инициализированы")
+            elif result == ErrorCode.PARTIAL_SUCCESS:
+                Logger().get_logger().warning("Некоторые администраторы не были инициализированы")
+            else:
+                Logger().get_logger().error("Ошибка инициализации администраторов")
+
+            return result
+
+        except Exception as e:
+            Logger().get_logger().error(f"Критическая ошибка при инициализации администраторов: {str(e)}")
+            return ErrorCode.INIT_DB_ERROR
 
     async def init(self) -> ErrorCode:
         """
@@ -52,6 +105,14 @@ class EngineBot:
             if token_bot:
                 Logger().get_logger().info("Токен успешно получен. Создание экземпляра Bot")
                 self._bot = Bot(token=token_bot)
+
+                # Теперь инициализируем администраторов после создания бота
+                admin_init_result = await self._init_admins()
+                if admin_init_result == ErrorCode.FAILED_ERROR:
+                    Logger().get_logger().error("Критическая ошибка инициализации администраторов")
+                    # Можно решить, нужно ли прерывать запуск в этом случае
+                    return ErrorCode.FAILED_ERROR
+
                 Logger().get_logger().info("Бот успешно инициализирован")
                 return ErrorCode.SUCCESSFUL
             else:
