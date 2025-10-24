@@ -2,7 +2,7 @@ from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from core.database_manager.db_user_handler import DatabaseUserHandler, UserRole
@@ -29,14 +29,55 @@ class AdminRouter(BaseRouter):
     """
 
     def __init__(self, router: Router) -> None:
+        """
+        Создает экземпляр класса AdminRouter
+
+        :param router: Роутер aiogram для регистрации обработчиков
+        """
         self.user_handler = DatabaseUserHandler()
         self.logger = Logger().get_logger()
         super().__init__(router)
         self.logger.info("AdminRouter инициализирован")
 
+    def _create_admin_keyboard(self) -> InlineKeyboardMarkup:
+        """
+        Создает клавиатуру для админ-панели
+        """
+        keyboard = InlineKeyboardBuilder()
+
+        buttons = [
+            (self.locale.buttons.get("btn_add_user"), "add_user_cmd"),
+            (self.locale.buttons.get("btn_list_users"), "users_list_cmd"),
+            (self.locale.buttons.get("btn_delete_user"), "delete_users_cmd"),
+            (self.locale.buttons.get("btn_close"), "cancel_operation")
+        ]
+
+        for text, callback_data in buttons:
+            keyboard.button(text=text, callback_data=callback_data)
+
+        keyboard.adjust(1)
+        return keyboard.as_markup()
+
+    async def _send_or_edit_message(
+            self,
+            target: Message | CallbackQuery,
+            text: str,
+            reply_markup: InlineKeyboardMarkup
+    ) -> None:
+        """
+        Универсальный метод для отправки или редактирования сообщения
+        """
+        if isinstance(target, Message):
+            await target.answer(text, reply_markup=reply_markup, parse_mode="Markdown")
+        else:
+            await target.message.edit_text(text, reply_markup=reply_markup, parse_mode="Markdown")
+
     async def _is_admin(self, user_id: int) -> bool:
         """
         Проверяет, является ли пользователь администратором по данным из БД
+
+        :param user_id: ID пользователя для проверки
+        :return: True если пользователь администратор, иначе False
         """
         try:
             user_role = await self.user_handler.get_user_role(user_id)
@@ -83,53 +124,37 @@ class AdminRouter(BaseRouter):
     async def admin_panel(self, target: Message | CallbackQuery) -> None:
         """
         Панель администратора - ЕДИНСТВЕННАЯ точка входа, проверяющая права
+
+        :param target: Сообщение или callback запрос от пользователя
         """
-        if isinstance(target, Message):
-            message = target
-            user_id = message.from_user.id
-        else:
-            message = target.message
-            user_id = target.from_user.id
+        user_id = target.from_user.id
+        message = target if isinstance(target, Message) else target.message
 
         if not await self._is_admin(user_id):
-            await message.answer("❌ Доступ запрещен. У вас нет прав администратора.")
+            await message.answer(self.locale.bot.get("access_denied_msg"))
             self.logger.warning(f"Попытка доступа к админ-панели от не-админа: {user_id}")
             return
 
         self.logger.info(f"Админ {user_id} вызвал панель администратора")
 
         try:
-            keyboard = InlineKeyboardBuilder()
-            keyboard.button(text="👥 Добавить пользователя", callback_data="add_user_cmd")
-            keyboard.button(text="📋 Список пользователей", callback_data="users_list_cmd")
-            keyboard.button(text="🗑️ Удалить пользователя", callback_data="delete_users_cmd")
-            keyboard.button(text="❌ Закрыть", callback_data="cancel_operation")
-            keyboard.adjust(1)
+            keyboard = self._create_admin_keyboard()
 
-            if isinstance(target, Message):
-                await message.answer(
-                    "🛠️ **Панель администратора**\n\n"
-                    "Выберите действие:",
-                    reply_markup=keyboard.as_markup(),
-                    parse_mode="Markdown"
-                )
-            else:
-                await message.edit_text(
-                    "🛠️ **Панель администратора**\n\n"
-                    "Выберите действие:",
-                    reply_markup=keyboard.as_markup(),
-                    parse_mode="Markdown"
-                )
+            text = self.locale.ui.get("admin_panel_desc")
+            await self._send_or_edit_message(target, text, keyboard)
 
             self.logger.debug(f"Панель администратора отправлена пользователю {user_id}")
 
         except Exception as e:
             self.logger.error(f"Ошибка при отображении панели администратора: {str(e)}", exc_info=True)
-            await message.answer("❌ Произошла ошибка при отображении панели администратора.")
+            await message.answer(self.locale.bot.get("error_display_admin_panel"))
 
     async def back_to_admin_panel(self, callback: CallbackQuery, state: FSMContext) -> None:
         """
         Возврат в админ-панель
+
+        :param callback: Callback запрос от кнопки
+        :param state: Состояние FSM
         """
         self.logger.info(f"Админ {callback.from_user.id} нажал 'Назад в админ-панель'")
         await state.clear()
@@ -139,6 +164,9 @@ class AdminRouter(BaseRouter):
     async def add_user_callback(self, callback: CallbackQuery, state: FSMContext) -> None:
         """
         Обработка нажатия кнопки "Добавить пользователя" - ЕДИНСТВЕННЫЙ способ начать добавление
+
+        :param callback: Callback запрос от кнопки
+        :param state: Состояние FSM
         """
         self.logger.info(f"Админ {callback.from_user.id} нажал кнопку 'Добавить пользователя'")
 
@@ -169,6 +197,9 @@ class AdminRouter(BaseRouter):
     async def process_user_input(self, message: Message, state: FSMContext) -> None:
         """
         Обработка ввода пользователя - ID или пересланное сообщение
+
+        :param message: Сообщение от пользователя
+        :param state: Состояние FSM
         """
         self.logger.debug(f"Обработка ввода от админа {message.from_user.id}: {message.text}")
 
@@ -234,6 +265,9 @@ class AdminRouter(BaseRouter):
     async def _handle_forwarded_message(self, message: Message, state: FSMContext) -> None:
         """
         Обработка пересланного сообщения
+
+        :param message: Пересланное сообщение
+        :param state: Состояние FSM
         """
         forwarded_from = message.forward_from
         self.logger.info(
@@ -286,10 +320,22 @@ class AdminRouter(BaseRouter):
             self.logger.error(f"Ошибка при обработке пересланного сообщения: {str(e)}", exc_info=True)
             await message.answer("❌ Произошла ошибка при обработке пересланного сообщения.")
 
-    async def _ask_for_username(self, message: Message, state: FSMContext, user_id: int = None, first_name: str = "",
-                                last_name: str = "") -> None:
+    async def _ask_for_username(
+            self,
+            message: Message,
+            state: FSMContext,
+            user_id: int = None,
+            first_name: str = "",
+            last_name: str = ""
+    ) -> None:
         """
         Запрос username у администратора
+
+        :param message: Сообщение от администратора
+        :param state: Состояние FSM
+        :param user_id: ID пользователя (опционально)
+        :param first_name: Имя пользователя (опционально)
+        :param last_name: Фамилия пользователя (опционально)
         """
         # Если user_id передан, обновляем состояние
         if user_id:
@@ -320,10 +366,24 @@ class AdminRouter(BaseRouter):
         await state.set_state(AdminStates.waiting_for_username)
         self.logger.debug(f"Установлено состояние waiting_for_username для админа {message.from_user.id}")
 
-    async def _ask_for_role(self, message: Message, state: FSMContext, user_id: int, username: str, first_name: str,
-                            last_name: str) -> None:
+    async def _ask_for_role(
+            self,
+            message: Message,
+            state: FSMContext,
+            user_id: int,
+            username: str,
+            first_name: str,
+            last_name: str
+    ) -> None:
         """
         Запрос роли у администратора
+
+        :param message: Сообщение от администратора
+        :param state: Состояние FSM
+        :param user_id: ID пользователя
+        :param username: Username пользователя
+        :param first_name: Имя пользователя
+        :param last_name: Фамилия пользователя
         """
         # Сохраняем username в состоянии
         await state.update_data(username=username)
@@ -354,6 +414,9 @@ class AdminRouter(BaseRouter):
     async def process_username(self, message: Message, state: FSMContext) -> None:
         """
         Обработка введенного username
+
+        :param message: Сообщение с username от администратора
+        :param state: Состояние FSM
         """
         username = message.text.strip()
         self.logger.debug(f"Обработка username от админа {message.from_user.id}: {username}")
@@ -411,6 +474,9 @@ class AdminRouter(BaseRouter):
     async def back_to_user_input(self, callback: CallbackQuery, state: FSMContext) -> None:
         """
         Возврат к вводу пользователя
+
+        :param callback: Callback запрос от кнопки
+        :param state: Состояние FSM
         """
         self.logger.info(f"Админ {callback.from_user.id} нажал 'Назад к вводу'")
 
@@ -433,6 +499,9 @@ class AdminRouter(BaseRouter):
     async def back_to_username_input(self, callback: CallbackQuery, state: FSMContext) -> None:
         """
         Возврат к вводу username
+
+        :param callback: Callback запрос от кнопки
+        :param state: Состояние FSM
         """
         self.logger.info(f"Админ {callback.from_user.id} нажал 'Назад к username'")
 
@@ -463,6 +532,8 @@ class AdminRouter(BaseRouter):
     async def delete_users_callback(self, callback: CallbackQuery) -> None:
         """
         Обработка нажатия кнопки "Удалить пользователя"
+
+         :param callback: Callback запрос от кнопки
         """
         self.logger.info(f"Админ {callback.from_user.id} нажал кнопку 'Удалить пользователя'")
 
@@ -513,6 +584,9 @@ class AdminRouter(BaseRouter):
     async def delete_user_callback(self, callback: CallbackQuery, state: FSMContext) -> None:
         """
         Обработка выбора пользователя для удаления
+
+        :param callback: Callback запрос от кнопки
+        :param state: Состояние FSM
         """
         try:
             # Извлекаем ID пользователя из callback data
@@ -559,6 +633,9 @@ class AdminRouter(BaseRouter):
     async def confirm_delete_callback(self, callback: CallbackQuery, state: FSMContext) -> None:
         """
         Подтверждение удаления пользователя
+
+        :param callback: Callback запрос от кнопки
+        :param state: Состояние FSM
         """
         try:
             # Извлекаем ID пользователя из callback data
@@ -647,6 +724,9 @@ class AdminRouter(BaseRouter):
     async def cancel_delete_callback(self, callback: CallbackQuery, state: FSMContext) -> None:
         """
         Отмена удаления пользователя
+
+        :param callback: Callback запрос от кнопки
+        :param state: Состояние FSM
         """
         self.logger.info(f"Админ {callback.from_user.id} отменил удаление пользователя")
         await state.clear()
@@ -654,9 +734,11 @@ class AdminRouter(BaseRouter):
         # Возвращаемся к списку пользователей для удаления
         await self.delete_users_callback(callback)
 
-    async def process_delete_confirmation(self, message: Message, state: FSMContext) -> None:
+    async def process_delete_confirmation(self, message: Message) -> None:
         """
-        Обработка текстового подтверждения удаления (если нужно)
+        Обработка текстового подтверждения удаления
+
+        :param message: Сообщение от администратора
         """
         await message.answer(
             "❌ Пожалуйста, используйте кнопки для подтверждения удаления.",
@@ -669,6 +751,8 @@ class AdminRouter(BaseRouter):
     async def users_list_callback(self, callback: CallbackQuery) -> None:
         """
         Обработка нажатия кнопки "Список пользователей" - ЕДИНСТВЕННЫЙ способ посмотреть список
+
+        :param callback: Callback запрос от кнопки
         """
         self.logger.info(f"Админ {callback.from_user.id} нажал кнопку 'Список пользователей'")
 
@@ -720,6 +804,9 @@ class AdminRouter(BaseRouter):
     async def add_user_by_forward(self, message: Message, state: FSMContext) -> None:
         """
         Добавление пользователя по пересланному сообщению
+
+        :param message: Пересланное сообщение
+        :param state: Состояние FSM
         """
         forwarded_from = message.forward_from
         self.logger.info(
