@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 
 from aiogram import Router
 
-from locale import Locale
+from core.locale.locale import Locale
 
 
 class BaseRouter(ABC):
