@@ -31,7 +31,7 @@ class RoutersRecorder:
         return cls._routers_factory
 
     @classmethod
-    def create_all_routers(cls, router: Router) ->list[Router]:
+    def create_all_routers(cls) ->list[Router]:
         """
         Создает все зарегистрированные роутеры
         """
@@ -53,7 +53,7 @@ class RoutersRecorder:
         Создает главный роутер со всеми зарегистрированными роутерами
         """
         main_router = Router()
-        for router in cls.create_all_routers(main_router):
+        for router in cls.create_all_routers():
             main_router.include_router(router)
 
         logger.info(f"✅ Создан главный роутер с {len(cls._routers_factory)} дочерними роутерами")

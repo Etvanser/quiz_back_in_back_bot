@@ -28,9 +28,7 @@ class EngineBot:
         """
         Настройка middleware для бота
         """
-        # Создаем экземпляр AuthMiddleware
         auth_middleware = AuthMiddleware()
-
         # Регистрируем middleware для всех типов сообщений
         self._dp.message.middleware(auth_middleware)
         self._dp.callback_query.middleware(auth_middleware)
@@ -47,17 +45,13 @@ class EngineBot:
         try:
             Logger().get_logger().info("Начало инициализации администраторов")
 
-            # Получаем список администраторов из конфига
             admin_ids = Config().data.admin_ids
 
             if not admin_ids:
                 Logger().get_logger().warning("Список администраторов пуст в конфигурации")
                 return ErrorCode.SUCCESSFUL
 
-            # Создаем обработчик пользователей
             user_handler = DatabaseUserHandler()
-
-            # Инициализируем администраторов с передачей бота для получения данных
             result = await user_handler.init_admin_users(admin_ids, self._bot)
 
             if result == ErrorCode.SUCCESSFUL:
@@ -82,35 +76,27 @@ class EngineBot:
         try:
             db_config_bot = DatabaseBotSettingsHandler()
             Logger().get_logger().debug("Создан экземпляр DatabaseBotSettingsHandler")
-
-            # Получаем токен из базы данных
             Logger().get_logger().debug("Попытка получения токена из базы данных")
             token_bot = await db_config_bot.get_token()
 
             if token_bot is None:
                 Logger().get_logger().warning("Токен не найден в базе данных. Попытка установки нового токена")
 
-                # Устанавливаем токен
                 set_result = await db_config_bot.set_token()
                 if set_result != ErrorCode.SUCCESSFUL:
                     Logger().get_logger().error(f"Ошибка установки токена в базу данных: {set_result}")
                     return ErrorCode.TOKEN_ERROR
 
                 Logger().get_logger().info("Токен успешно установлен в базу данных")
-
-                # Повторно получаем токен
                 Logger().get_logger().debug("Повторная попытка получения токена из базы данных")
                 token_bot = await db_config_bot.get_token()
 
             if token_bot:
                 Logger().get_logger().info("Токен успешно получен. Создание экземпляра Bot")
                 self._bot = Bot(token=token_bot)
-
-                # Теперь инициализируем администраторов после создания бота
                 admin_init_result = await self._init_admins()
                 if admin_init_result == ErrorCode.FAILED_ERROR:
                     Logger().get_logger().error("Критическая ошибка инициализации администраторов")
-                    # Можно решить, нужно ли прерывать запуск в этом случае
                     return ErrorCode.FAILED_ERROR
 
                 Logger().get_logger().info("Бот успешно инициализирован")

@@ -10,7 +10,6 @@ logger = Logger().get_logger()
 class CreatorDatabase(BaseDatabaseHandler):
     """
     Инициализатор БД и таблиц
-
     """
 
     def __init__(self) -> None:
@@ -23,6 +22,7 @@ class CreatorDatabase(BaseDatabaseHandler):
         """
         Проверка существования таблицы
 
+        :param table_name: Имя таблицы
         :return: True если таблица существует, False если нет или произошла ошибка
         """
         try:
@@ -43,6 +43,8 @@ class CreatorDatabase(BaseDatabaseHandler):
         """
         Валидирует структуру существующей таблицы согласно конфигурации.
 
+        :param table_name: Имя таблицы
+        :param columns: Словарь колонок
         :return: True если структура соответствует конфигурации, False в противном случае
         """
         if not await self.__table_exists(table_name):
@@ -72,6 +74,8 @@ class CreatorDatabase(BaseDatabaseHandler):
     async def __create_table(self, table: TableConfig) -> bool:
         """
         Создание таблицы
+
+        :param table: Таблица. Экземпляр TableConfig
         """
         try:
             columns_sql = ", ".join(
@@ -104,7 +108,6 @@ class CreatorDatabase(BaseDatabaseHandler):
                         ):
                             logger.error(f"Несоответствие структуры таблицы {table.table_name} конфигу")
                             return False
-                    # safe_mode отключен или структура соответствует
                     continue
 
                 # Таблицы не существует - создаем

@@ -18,5 +18,12 @@ BD_CONFIG = CONFIG_DIR / "config_struct_bd.json"
 BD_DIR = ROOT_DIR / "database"
 
 
+# Конфиг модулей локализации
+LOCALE_MODULE_CONFIG = CONFIG_DIR / "config_locale_module.json"
+# Конфиги локализации
+LOCALE_CONFIGS = CONFIG_DIR / "locale"
+# Конфиг с текстовками для кнопок
+LOCALE_BUTTONS = LOCALE_CONFIGS / "locale.buttons.json"
+
 
 PathLike = Union[Path, str]

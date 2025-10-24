@@ -1,0 +1,16 @@
+{
+  "modules": {
+    "ui": {
+      "file": "locale.ui.json",
+      "class_name": "UIModule"
+    },
+    "bot_messages": {
+      "file": "locale.bot_messages.json",
+      "class_name": "BotMessagesModule"
+    },
+    "buttons": {
+      "file": "locale.buttons.json",
+      "class_name": "ButtonsModule"
+    }
+  }
+}

@@ -3,7 +3,6 @@
 
 Содержит класс BaseDatabaseHandler, который предоставляет методы для:
 - Инициализации БД
-- Управления структурой таблиц
 
 Для работы требуется установка aiosqlite: pip install aiosqlite
 """
@@ -23,13 +22,24 @@ logger = Logger().get_logger()
 
 @dataclass
 class TableConfig:
+    """
+    Конфигурация таблицы
+    """
+    # Имя таблицы
     table_name: str
+    # Имя колонок таблицы
     columns: dict[str,str]
 
 @dataclass
 class DatabaseConfig:
+    """
+    Конфигурация БД
+    """
+    # ID Бота
     id_bot: str
+    # Имя файла БД
     db_file: str
+    # Таблицы в БД
     tables: list[TableConfig]
     safe_mode: bool = False
 
@@ -44,7 +54,6 @@ class ConfigDatabaseLoader(dict):
 
         db_config_data = self.config.get("db_config", {})
 
-        # tables_data = db_config_data.pop("tables")
         tables = []
         for table_data in db_config_data.pop("tables"):
             table_config = TableConfig(**table_data)
@@ -54,7 +63,6 @@ class ConfigDatabaseLoader(dict):
             **db_config_data,
             tables=tables
         )
-
         self["db_config"] = db_config
 
     def get_table_config(self, table_name: str) -> TableConfig | None:
@@ -119,97 +127,3 @@ class BaseDatabaseHandler(metaclass=Singleton):
         except Exception as e:
             logger.error(f"Неожиданная ошибка при выполнении запроса: {e}")
             return None
-
-
-
-    # async def user_exists(self, user_id: int) -> bool:
-    #     """
-    #     Проверяет существование пользователя в базе данных.
-    #     :param user_id: Telegram ID пользователя для проверки
-    #
-    #     :return True если пользователь существует, False если нет или произошла ошибка
-    #     """
-    #     try:
-    #         result = await self.__execute(
-    #             f'SELECT 1 FROM "{self.__table_name}" WHERE user_id = ?',
-    #             (user_id,),
-    #             fetch=True
-    #         )
-    #         exists = bool(result)
-    #         logger.debug(f"Пользователь {user_id} {'существует' if exists else 'не существует'} в БД")
-    #         return exists
-    #     except aiosqlite.Error as e:
-    #         logger.error(f"Ошибка проверки пользователя {user_id}: {e}")
-    #         return False
-    #
-    # async def add_user(
-    #         self,
-    #         user_id: int,
-    #         username: Optional[str] = None,
-    #         first_name: Optional[str] = None,
-    #         last_name: Optional[str] = None,
-    # ) -> bool:
-    #     """
-    #     Добавляет нового пользователя в базу данных.
-    #     :param user_id: Telegram ID пользователя (обязательный)
-    #     :param username: Telegram username (без @)
-    #     :param first_name: Имя пользователя
-    #     :param last_name: Фамилия пользователя
-    #
-    #     :return:
-    #         bool: True если пользователь успешно добавлен, False если:
-    #             - Пользователь уже существует
-    #             - Таблица не существует
-    #             - Произошла ошибка при добавлении
-    #     Note:
-    #         Перед добавлением проверяет существование таблицы и пользователя
-    #     """
-    #     logger.debug(f"Добавление пользователя ID: {user_id} в БД")
-    #
-    #     try:
-    #         if not await self.__table_exists():
-    #             logger.error(f"Таблица {self.__table_name} не существует")
-    #             return False
-    #
-    #         if await self.user_exists(user_id):
-    #             logger.debug(f"Пользователь {user_id} уже существует в БД")
-    #             return False
-    #
-    #         await self.__execute(
-    #             f"""
-    #                     INSERT INTO "{self.__table_name}"
-    #                     (user_id, username, first_name, last_name)
-    #                     VALUES (?, ?, ?, ?)
-    #                     """,
-    #             (user_id, username, first_name, last_name)
-    #         )
-    #         logger.debug(f"Пользователь {user_id} успешно добавлен в БД")
-    #         return True
-    #     except aiosqlite.Error as e:
-    #         logger.error(f"Ошибка при добавлении пользователя {user_id}: {e}")
-    #         return False
-    #
-    # async def get_user(self, user_id: int) -> Optional[dict[str, Any]]:
-    #     """
-    #     Получает данные пользователя по его ID.
-    #
-    #     :param user_id: Telegram ID пользователя
-    #
-    #     :return: Словарь с данными пользователя если найден,
-    #             None если пользователь не существует или произошла ошибка
-    #     """
-    #     logger.debug(f"Получение данных пользователя {user_id}")
-    #     try:
-    #         result = await self.__execute(
-    #             f'SELECT * FROM "{self.__table_name}" WHERE user_id = ?',
-    #             (user_id,),
-    #             fetch=True
-    #         )
-    #         if result:
-    #             logger.debug(f"Данные пользователя {user_id} успешно получены")
-    #             return dict(result[0])
-    #         logger.debug(f"Пользователь {user_id} не найден в БД")
-    #         return None
-    #     except aiosqlite.Error as e:
-    #         logger.error(f"Ошибка получения данных пользователя {user_id}: {e}")
-    #         return None

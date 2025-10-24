@@ -10,10 +10,18 @@ from logger import Logger
 
 class AuthMiddleware(BaseMiddleware):
     """
-    Middleware для проверки аутентификации пользователей
+    Middleware для проверки аутентификации пользователей и контроля доступа.
+
+    Проверяет наличие пользователя в базе данных и его роль,
+    а также контролирует доступ к защищенным ресурсам на основе ролей.
     """
 
     def __init__(self) -> None:
+        """
+        Инициализирует middleware.
+
+        Создает экземпляр DatabaseUserHandler для работы с пользователями в БД.
+        """
         self.user_handler = DatabaseUserHandler()
 
     async def __call__(
@@ -22,6 +30,15 @@ class AuthMiddleware(BaseMiddleware):
             event: Message,
             data: dict[str, Any]
     ) -> Any:
+        """
+        Обрабатывает входящее событие.
+
+        :param handler: Обработчик события, который будет вызван если проверки пройдены
+        :param event: Входящее событие (сообщение)
+        :param data: Словарь с дополнительными данными
+
+        :return: Результат выполнения handler или None если доступ запрещен
+        """
         user: User = data.get("event_from_user")
 
         if not user:
@@ -39,7 +56,7 @@ class AuthMiddleware(BaseMiddleware):
                     "❌ Доступ запрещен. Вы не зарегистрированы в системе.\n\n"
                     "Обратитесь к администратору для получения доступа."
                 )
-            return
+            return None
 
         # Добавляем информацию о пользователе в data
         user_role = await self.user_handler.get_user_role(user.id)
@@ -55,6 +72,6 @@ class AuthMiddleware(BaseMiddleware):
             )
             if isinstance(event, Message):
                 await event.answer("❌ У вас недостаточно прав для выполнения этой команды.")
-            return
+            return None
 
         return await handler(event, data)

@@ -10,6 +10,9 @@ from logger import Logger
 
 
 class UserRole(Enum):
+    """
+    Роли пользователей
+    """
     ADMIN = "admin"
     USER = "user"
 
@@ -19,13 +22,18 @@ class DatabaseUserHandler(BaseDatabaseHandler):
     Обработчик таблицы пользователей
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """
+        Создает экземпляр класса DatabaseUserHandler
+        """
         super().__init__()
         self._table_name = TableBD.USERS.value
 
     async def user_exists(self, user_id: int) -> bool:
         """
         Проверяет существование пользователя
+
+        :param user_id: ID пользователя
         """
         try:
             result = await self._execute(
@@ -41,6 +49,8 @@ class DatabaseUserHandler(BaseDatabaseHandler):
     async def get_user_role(self, user_id: int) -> Optional[UserRole]:
         """
         Получает роль пользователя
+
+        :param user_id: ID пользователя
         """
         try:
             result = await self._execute(
@@ -69,11 +79,15 @@ class DatabaseUserHandler(BaseDatabaseHandler):
     ) -> ErrorCode:
         """
         Добавляет нового пользователя
+
+        :param user_id: ID пользователя
+        :param username: Username пользователя
+        :param first_name: Имя пользователя
+        :param last_name: Фамилия пользователя
+        :param role: Роль пользователя
         """
         try:
-            # Проверяем, существует ли пользователь
             if await self.user_exists(user_id):
-                # Обновляем данные существующего пользователя
                 return await self.update_user(user_id, username, first_name, last_name, role)
 
             query = f'''
@@ -107,9 +121,14 @@ class DatabaseUserHandler(BaseDatabaseHandler):
     ) -> ErrorCode:
         """
         Обновляет данные пользователя
+
+        :param user_id: ID пользователя
+        :param username: Username пользователя
+        :param first_name: Имя пользователя
+        :param last_name: Фамилия пользователя
+        :param role: Роль пользователя
         """
         try:
-            # Собираем поля для обновления
             update_fields = []
             params = []
 
@@ -127,7 +146,7 @@ class DatabaseUserHandler(BaseDatabaseHandler):
                 params.append(role.value)
 
             if not update_fields:
-                return ErrorCode.SUCCESSFUL  # Нечего обновлять
+                return ErrorCode.SUCCESSFUL
 
             params.append(user_id)
 
@@ -153,6 +172,9 @@ class DatabaseUserHandler(BaseDatabaseHandler):
     async def update_user_role(self, user_id: int, role: UserRole) -> ErrorCode:
         """
         Обновляет роль пользователя
+
+        :param user_id: ID пользователя
+        :param role: Роль пользователя
         """
         return await self.update_user(user_id, role=role)
 
@@ -172,8 +194,6 @@ class DatabaseUserHandler(BaseDatabaseHandler):
             skipped_count = 0
 
             for admin_id in admin_ids:
-
-                # Получаем данные пользователя если доступен бот
                 username = None
                 if bot:
                     try:
@@ -194,7 +214,6 @@ class DatabaseUserHandler(BaseDatabaseHandler):
                             f"Не удалось получить данные пользователя {admin_id} через бота: {str(e)}. "
                             f"Используем значения по умолчанию"
                         )
-                        # Устанавливаем значения по умолчанию если не удалось получить данные
                         first_name = "Admin"
                         last_name = "User"
                 else:
@@ -205,7 +224,6 @@ class DatabaseUserHandler(BaseDatabaseHandler):
                     first_name = "Admin"
                     last_name = "User"
 
-                # Добавляем администратора с полученными данными
                 result = await self.add_user(
                     user_id=admin_id,
                     username=username,
@@ -279,12 +297,10 @@ class DatabaseUserHandler(BaseDatabaseHandler):
         :return: Результат операции
         """
         try:
-            # Проверяем, существует ли пользователь
             if not await self.user_exists(user_id):
                 Logger().get_logger().warning(f"Попытка удалить несуществующего пользователя {user_id}")
                 return ErrorCode.FAILED_ERROR
 
-            # Удаляем пользователя
             result = await self._execute(
                 f'DELETE FROM "{self._table_name}" WHERE user_id = ?',
                 (user_id,)
