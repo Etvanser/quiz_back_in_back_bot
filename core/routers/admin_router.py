@@ -58,19 +58,33 @@ class AdminRouter(BaseRouter):
         keyboard.adjust(1)
         return keyboard.as_markup()
 
+    def _back_button_keyboard(self, callback_data: str) -> InlineKeyboardMarkup:
+        """
+        Создает клавиатуру с кнопкой назад
+
+        :param callback_data: Callback куда нужно вернутся
+        """
+        keyboard = InlineKeyboardBuilder()
+        text = self.locale.buttons.get("btn_back")
+
+        keyboard.button(text=text, callback_data=callback_data)
+        keyboard.adjust(1)
+        return keyboard.as_markup()
+
     async def _send_or_edit_message(
             self,
             target: Message | CallbackQuery,
             text: str,
-            reply_markup: InlineKeyboardMarkup
+            reply_markup: InlineKeyboardMarkup,
+            parse_mode: str = "Markdown"
     ) -> None:
         """
         Универсальный метод для отправки или редактирования сообщения
         """
         if isinstance(target, Message):
-            await target.answer(text, reply_markup=reply_markup, parse_mode="Markdown")
+            await target.answer(text, reply_markup=reply_markup, parse_mode=parse_mode)
         else:
-            await target.message.edit_text(text, reply_markup=reply_markup, parse_mode="Markdown")
+            await target.message.edit_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
 
     async def _is_admin(self, user_id: int) -> bool:
         """
@@ -97,16 +111,15 @@ class AdminRouter(BaseRouter):
         self.logger.debug("Начало регистрации обработчиков AdminRouter")
 
         # Команды администратора - оставляем только /admin
-        self.router.message(Command("admin"))(self.admin_panel)
+        self.router.message(Command("admin"))(self._admin_panel)
 
         # Обработчики состояний для добавления пользователя
-        self.router.message(AdminStates.waiting_for_user_input)(self.process_user_input)
-        self.router.message(AdminStates.waiting_for_username)(self.process_username)
+        self.router.message(AdminStates.waiting_for_user_input)(self._process_user_input)
         self.router.message(AdminStates.waiting_for_role)(self.process_role)
         self.router.message(AdminStates.waiting_for_delete_confirmation)(self.process_delete_confirmation)
 
         # Callback-обработчики для кнопок
-        self.router.callback_query(F.data == "add_user_cmd")(self.add_user_callback)
+        self.router.callback_query(F.data == "add_user_cmd")(self._add_user_callback)
         self.router.callback_query(F.data == "users_list_cmd")(self.users_list_callback)
         self.router.callback_query(F.data == "delete_users_cmd")(self.delete_users_callback)
         self.router.callback_query(F.data.startswith("role_"))(self.process_role_callback)
@@ -115,13 +128,11 @@ class AdminRouter(BaseRouter):
         self.router.callback_query(F.data.startswith("confirm_delete_"))(self.confirm_delete_callback)
         self.router.callback_query(F.data.startswith("cancel_delete_"))(self.cancel_delete_callback)
         self.router.callback_query(F.data == "cancel_operation")(self.cancel_operation)
-        self.router.callback_query(F.data == "back_to_admin")(self.back_to_admin_panel)
-        self.router.callback_query(F.data == "back_to_user_input")(self.back_to_user_input)
-        self.router.callback_query(F.data == "back_to_username")(self.back_to_username_input)
+        self.router.callback_query(F.data == "back_to_admin")(self._back_to_admin_panel)
 
         self.logger.info("Обработчики AdminRouter успешно зарегистрированы")
 
-    async def admin_panel(self, target: Message | CallbackQuery) -> None:
+    async def _admin_panel(self, target: Message | CallbackQuery) -> None:
         """
         Панель администратора - ЕДИНСТВЕННАЯ точка входа, проверяющая права
 
@@ -149,7 +160,7 @@ class AdminRouter(BaseRouter):
             self.logger.error(f"Ошибка при отображении панели администратора: {str(e)}", exc_info=True)
             await message.answer(self.locale.bot.get("error_display_admin_panel"))
 
-    async def back_to_admin_panel(self, callback: CallbackQuery, state: FSMContext) -> None:
+    async def _back_to_admin_panel(self, callback: CallbackQuery, state: FSMContext) -> None:
         """
         Возврат в админ-панель
 
@@ -158,10 +169,10 @@ class AdminRouter(BaseRouter):
         """
         self.logger.info(f"Админ {callback.from_user.id} нажал 'Назад в админ-панель'")
         await state.clear()
-        await self.admin_panel(callback)
+        await self._admin_panel(callback)
         await callback.answer()
 
-    async def add_user_callback(self, callback: CallbackQuery, state: FSMContext) -> None:
+    async def _add_user_callback(self, callback: CallbackQuery, state: FSMContext) -> None:
         """
         Обработка нажатия кнопки "Добавить пользователя" - ЕДИНСТВЕННЫЙ способ начать добавление
 
@@ -172,95 +183,47 @@ class AdminRouter(BaseRouter):
 
         try:
             await state.clear()
-
-            # Создаем клавиатуру с кнопкой "Назад"
-            keyboard = InlineKeyboardBuilder()
-            keyboard.button(text="⬅️ Назад", callback_data="back_to_admin")
-            keyboard.adjust(1)
-
-            await callback.message.edit_text(
-                "👤 **Добавление нового пользователя**\n\n"
-                "Вы можете:\n"
-                "• Ввести ID пользователя (только цифры)\n"
-                "• Переслать сообщение от пользователя\n\n"
-                "Отправьте ID или перешлите сообщение:",
-                reply_markup=keyboard.as_markup()
+            await self._send_or_edit_message(
+                target=callback,
+                text=self.locale.ui.get("add_user_desc"),
+                reply_markup=self._back_button_keyboard(callback_data="back_to_admin")
             )
+
             await state.set_state(AdminStates.waiting_for_user_input)
-            self.logger.debug(f"Установлено состояние waiting_for_user_input для админа {callback.from_user.id}")
             await callback.answer()
 
         except Exception as e:
             self.logger.error(f"Ошибка при обработке callback добавления пользователя: {str(e)}", exc_info=True)
-            await callback.answer("❌ Ошибка при начале добавления пользователя.")
+            await callback.answer(self.locale.bot.get("error_add_user_msg"))
 
-    async def process_user_input(self, message: Message, state: FSMContext) -> None:
+    async def _process_user_input(self, message: Message, state: FSMContext) -> None:
         """
-        Обработка ввода пользователя - ID или пересланное сообщение
+        Обработка пересланного сообщение
 
         :param message: Сообщение от пользователя
         :param state: Состояние FSM
         """
         self.logger.debug(f"Обработка ввода от админа {message.from_user.id}: {message.text}")
 
-        try:
-            # Проверяем, является ли сообщение пересланным
-            if message.forward_from:
-                await self._handle_forwarded_message(message, state)
-                return
+        if not message.forward_from:
+            await self._handle_invalid_input(message)
+            return
 
-            # Если не пересланное сообщение, обрабатываем как ID
-            user_id = int(message.text.strip())
-            self.logger.info(f"Админ {message.from_user.id} ввел ID пользователя: {user_id}")
+        await self._handle_forwarded_message(message, state)
 
-            # Проверяем, существует ли уже пользователь
-            if await self.user_handler.user_exists(user_id):
-                self.logger.warning(f"Попытка добавить существующего пользователя {user_id}")
+    async def _handle_invalid_input(self, message: Message) -> None:
+        """
+        Обработка некорректного ввода (не пересланное сообщение)
+        """
+        admin_id = message.from_user.id
+        self.logger.warning(f"Админ {admin_id} отправил непересланное сообщение: {message.text}")
 
-                # Создаем клавиатуру с кнопкой "Назад"
-                keyboard = InlineKeyboardBuilder()
-                keyboard.button(text="⬅️ Назад", callback_data="back_to_admin")
-                keyboard.adjust(1)
-
-                await message.answer(
-                    "❌ Пользователь с таким ID уже существует в системе.\n\n"
-                    "Введите другой ID или перешлите сообщение от другого пользователя:",
-                    reply_markup=keyboard.as_markup()
-                )
-                return
-
-            # Сохраняем ID в состоянии
-            await state.update_data(user_id=user_id)
-            self.logger.debug(f"ID пользователя {user_id} сохранен в состоянии")
-
-            # Переходим к вводу username
-            await self._ask_for_username(message, state)
-
-        except ValueError:
-            self.logger.warning(f"Неверный формат ввода от админа {message.from_user.id}: {message.text}")
-
-            # Создаем клавиатуру с кнопкой "Назад"
-            keyboard = InlineKeyboardBuilder()
-            keyboard.button(text="⬅️ Назад", callback_data="back_to_admin")
-            keyboard.adjust(1)
-
-            await message.answer(
-                "❌ Неверный формат. Введите только цифры (ID) или перешлите сообщение от пользователя:\n"
-                "Пример ID: 123456789",
-                reply_markup=keyboard.as_markup()
-            )
-        except Exception as e:
-            self.logger.error(f"Ошибка при обработке ввода пользователя: {str(e)}", exc_info=True)
-
-            # Создаем клавиатуру с кнопкой "Назад"
-            keyboard = InlineKeyboardBuilder()
-            keyboard.button(text="⬅️ Назад", callback_data="back_to_admin")
-            keyboard.adjust(1)
-
-            await message.answer(
-                "❌ Произошла ошибка при обработке ввода.",
-                reply_markup=keyboard.as_markup()
-            )
+        text = self.locale.bot.get("error_input_forward_msg")
+        await self._send_or_edit_message(
+            target=message,
+            text=text,
+            reply_markup=self._back_button_keyboard(callback_data="back_to_admin")
+        )
 
     async def _handle_forwarded_message(self, message: Message, state: FSMContext) -> None:
         """
@@ -275,32 +238,27 @@ class AdminRouter(BaseRouter):
 
         try:
             user_id = forwarded_from.id
-            username = forwarded_from.username
+            username = forwarded_from.username or ""
             first_name = forwarded_from.first_name or ""
             last_name = forwarded_from.last_name or ""
 
-            # Проверяем, существует ли уже пользователь
             if await self.user_handler.user_exists(user_id):
                 self.logger.warning(
                     f"Попытка добавить существующего пользователя {user_id} через пересланное сообщение")
 
-                # Создаем клавиатуру с кнопкой "Назад"
-                keyboard = InlineKeyboardBuilder()
-                keyboard.button(text="⬅️ Назад", callback_data="back_to_admin")
-                keyboard.adjust(1)
-
-                await message.answer(
-                    f"❌ Пользователь уже существует в системе.\n\n"
-                    f"**ID:** `{user_id}`\n"
-                    f"**Username:** @{username if username else 'не указан'}\n"
-                    f"**Имя:** {first_name} {last_name}\n\n"
-                    "Попробуйте другого пользователя:",
-                    reply_markup=keyboard.as_markup(),
-                    parse_mode="Markdown"
+                text = self.locale.bot.get("warning_user_is_exists").format(
+                    user_id=user_id,
+                    username=username if username else "не указан",
+                    first_name=first_name,
+                    last_name=last_name,
+                )
+                await self._send_or_edit_message(
+                    target=message,
+                    text=text,
+                    reply_markup=self._back_button_keyboard(callback_data="back_to_admin")
                 )
                 return
 
-            # Сохраняем данные пользователя в состоянии
             await state.update_data(
                 user_id=user_id,
                 username=username,
@@ -308,63 +266,11 @@ class AdminRouter(BaseRouter):
                 last_name=last_name
             )
             self.logger.debug(f"Данные пользователя {user_id} сохранены в состоянии")
-
-            # Если у пользователя есть username, переходим сразу к выбору роли
-            if username:
-                await self._ask_for_role(message, state, user_id, username, first_name, last_name)
-            else:
-                # Если username нет, запрашиваем его
-                await self._ask_for_username(message, state, user_id, first_name, last_name)
+            await self._ask_for_role(message, state, user_id, username, first_name, last_name)
 
         except Exception as e:
             self.logger.error(f"Ошибка при обработке пересланного сообщения: {str(e)}", exc_info=True)
             await message.answer("❌ Произошла ошибка при обработке пересланного сообщения.")
-
-    async def _ask_for_username(
-            self,
-            message: Message,
-            state: FSMContext,
-            user_id: int = None,
-            first_name: str = "",
-            last_name: str = ""
-    ) -> None:
-        """
-        Запрос username у администратора
-
-        :param message: Сообщение от администратора
-        :param state: Состояние FSM
-        :param user_id: ID пользователя (опционально)
-        :param first_name: Имя пользователя (опционально)
-        :param last_name: Фамилия пользователя (опционально)
-        """
-        # Если user_id передан, обновляем состояние
-        if user_id:
-            data = await state.get_data()
-            data['user_id'] = user_id
-            data['first_name'] = first_name
-            data['last_name'] = last_name
-            await state.set_data(data)
-
-        # Создаем клавиатуру с кнопкой "Назад"
-        keyboard = InlineKeyboardBuilder()
-        keyboard.button(text="⬅️ Назад к вводу", callback_data="back_to_user_input")
-        keyboard.adjust(1)
-
-        current_data = await state.get_data()
-        user_id = current_data.get('user_id')
-
-        text = f"✅ ID пользователя: `{user_id}`\n\n"
-        if first_name or last_name:
-            text += f"**Имя:** {first_name} {last_name}\n\n"
-        text += "Теперь введите username пользователя (без @). Если username отсутствует, отправьте '-' :"
-
-        await message.answer(
-            text,
-            reply_markup=keyboard.as_markup(),
-            parse_mode="Markdown"
-        )
-        await state.set_state(AdminStates.waiting_for_username)
-        self.logger.debug(f"Установлено состояние waiting_for_username для админа {message.from_user.id}")
 
     async def _ask_for_role(
             self,
@@ -385,149 +291,29 @@ class AdminRouter(BaseRouter):
         :param first_name: Имя пользователя
         :param last_name: Фамилия пользователя
         """
-        # Сохраняем username в состоянии
         await state.update_data(username=username)
 
-        # Создаем клавиатуру для выбора роли с кнопкой "Назад"
         keyboard = InlineKeyboardBuilder()
-        keyboard.button(text="👤 Обычный пользователь", callback_data="role_user")
-        keyboard.button(text="🛠️ Администратор", callback_data="role_admin")
-        keyboard.button(text="⬅️ Назад к username", callback_data="back_to_username")
-        keyboard.button(text="❌ Отмена", callback_data="cancel_operation")
+        keyboard.button(text=self.locale.buttons.get("btn_role_user"), callback_data="role_user")
+        keyboard.button(text=self.locale.buttons.get("btn_role_admin"), callback_data="role_admin")
+        keyboard.button(text=self.locale.buttons.get("btn_back"), callback_data="add_user_cmd")
+        keyboard.button(text=self.locale.buttons.get("btn_cancel"), callback_data="cancel_operation")
         keyboard.adjust(2, 1, 1)
 
-        text = f"✅ Данные пользователя:\n\n"
-        text += f"**ID:** `{user_id}`\n"
-        text += f"**Username:** @{username}\n"
-        if first_name or last_name:
-            text += f"**Имя:** {first_name} {last_name}\n"
-        text += f"\nТеперь выберите роль пользователя:"
+        text = self.locale.ui.get("add_user_data_desc").format(
+            user_id=user_id,
+            username=username if username else "не указан",
+            first_name=first_name or "",
+            last_name=last_name or "",
+        )
 
-        await message.answer(
-            text,
-            reply_markup=keyboard.as_markup(),
-            parse_mode="Markdown"
+        await self._send_or_edit_message(
+            target=message,
+            text=text,
+            reply_markup=keyboard.as_markup()
         )
         await state.set_state(AdminStates.waiting_for_role)
         self.logger.debug(f"Установлено состояние waiting_for_role для админа {message.from_user.id}")
-
-    async def process_username(self, message: Message, state: FSMContext) -> None:
-        """
-        Обработка введенного username
-
-        :param message: Сообщение с username от администратора
-        :param state: Состояние FSM
-        """
-        username = message.text.strip()
-        self.logger.debug(f"Обработка username от админа {message.from_user.id}: {username}")
-
-        try:
-            if username == "-":
-                username = None
-                self.logger.debug("Username установлен как None")
-            else:
-                # Убираем @ если пользователь его ввел
-                username = username.lstrip('@')
-                self.logger.debug(f"Username после обработки: {username}")
-
-                # Проверяем валидность username
-                if not self._is_valid_username(username):
-                    self.logger.warning(f"Неверный формат username от админа {message.from_user.id}: {username}")
-
-                    # Создаем клавиатуру с кнопкой "Назад"
-                    keyboard = InlineKeyboardBuilder()
-                    keyboard.button(text="⬅️ Назад к вводу", callback_data="back_to_user_input")
-                    keyboard.adjust(1)
-
-                    await message.answer(
-                        "❌ Неверный формат username. Используйте только латинские буквы, цифры и подчеркивания.\n\n"
-                        "Введите username еще раз или отправьте '-' если username отсутствует:",
-                        reply_markup=keyboard.as_markup()
-                    )
-                    return
-
-            await state.update_data(username=username)
-            self.logger.debug(f"Username {username} сохранен в состоянии")
-
-            # Получаем данные из состояния
-            data = await state.get_data()
-            user_id = data.get('user_id')
-            first_name = data.get('first_name', '')
-            last_name = data.get('last_name', '')
-
-            # Переходим к выбору роли
-            await self._ask_for_role(message, state, user_id, username, first_name, last_name)
-
-        except Exception as e:
-            self.logger.error(f"Ошибка при обработке username: {str(e)}", exc_info=True)
-
-            # Создаем клавиатуру с кнопкой "Назад"
-            keyboard = InlineKeyboardBuilder()
-            keyboard.button(text="⬅️ Назад к вводу", callback_data="back_to_user_input")
-            keyboard.adjust(1)
-
-            await message.answer(
-                "❌ Произошла ошибка при обработке username.",
-                reply_markup=keyboard.as_markup()
-            )
-
-    async def back_to_user_input(self, callback: CallbackQuery, state: FSMContext) -> None:
-        """
-        Возврат к вводу пользователя
-
-        :param callback: Callback запрос от кнопки
-        :param state: Состояние FSM
-        """
-        self.logger.info(f"Админ {callback.from_user.id} нажал 'Назад к вводу'")
-
-        # Создаем клавиатуру с кнопкой "Назад"
-        keyboard = InlineKeyboardBuilder()
-        keyboard.button(text="⬅️ Назад", callback_data="back_to_admin")
-        keyboard.adjust(1)
-
-        await callback.message.edit_text(
-            "👤 **Добавление нового пользователя**\n\n"
-            "Вы можете:\n"
-            "• Ввести ID пользователя (только цифры)\n"
-            "• Переслать сообщение от пользователя\n\n"
-            "Отправьте ID или перешлите сообщение:",
-            reply_markup=keyboard.as_markup()
-        )
-        await state.set_state(AdminStates.waiting_for_user_input)
-        await callback.answer()
-
-    async def back_to_username_input(self, callback: CallbackQuery, state: FSMContext) -> None:
-        """
-        Возврат к вводу username
-
-        :param callback: Callback запрос от кнопки
-        :param state: Состояние FSM
-        """
-        self.logger.info(f"Админ {callback.from_user.id} нажал 'Назад к username'")
-
-        # Получаем сохраненные данные из состояния
-        data = await state.get_data()
-        user_id = data.get('user_id')
-        first_name = data.get('first_name', '')
-        last_name = data.get('last_name', '')
-
-        # Создаем клавиатуру с кнопкой "Назад"
-        keyboard = InlineKeyboardBuilder()
-        keyboard.button(text="⬅️ Назад к вводу", callback_data="back_to_user_input")
-        keyboard.adjust(1)
-
-        text = f"✅ ID пользователя: `{user_id}`\n\n"
-        if first_name or last_name:
-            text += f"**Имя:** {first_name} {last_name}\n\n"
-        text += "Теперь введите username пользователя (без @). Если username отсутствует, отправьте '-' :"
-
-        await callback.message.edit_text(
-            text,
-            reply_markup=keyboard.as_markup(),
-            parse_mode="Markdown"
-        )
-        await state.set_state(AdminStates.waiting_for_username)
-        await callback.answer()
 
     async def delete_users_callback(self, callback: CallbackQuery) -> None:
         """
@@ -871,140 +657,6 @@ class AdminRouter(BaseRouter):
             self.logger.error(f"Ошибка при обработке пересланного сообщения: {str(e)}", exc_info=True)
             await message.answer("❌ Произошла ошибка при обработке пересланного сообщения.")
 
-    async def process_user_id(self, message: Message, state: FSMContext) -> None:
-        """
-        Обработка введенного ID пользователя
-        """
-        self.logger.debug(f"Обработка ID пользователя от админа {message.from_user.id}: {message.text}")
-
-        try:
-            user_id = int(message.text.strip())
-            self.logger.info(f"Админ {message.from_user.id} ввел ID пользователя: {user_id}")
-
-            # Проверяем, существует ли уже пользователь
-            if await self.user_handler.user_exists(user_id):
-                self.logger.warning(f"Попытка добавить существующего пользователя {user_id}")
-
-                # Создаем клавиатуру с кнопкой "Назад"
-                keyboard = InlineKeyboardBuilder()
-                keyboard.button(text="⬅️ Назад", callback_data="back_to_admin")
-                keyboard.adjust(1)
-
-                await message.answer(
-                    "❌ Пользователь с таким ID уже существует в системе.\n\n"
-                    "Хотите добавить другого пользователя? Введите новый ID:",
-                    reply_markup=keyboard.as_markup()
-                )
-                return
-
-            # Сохраняем ID в состоянии
-            await state.update_data(user_id=user_id)
-            self.logger.debug(f"ID пользователя {user_id} сохранен в состоянии")
-
-            # Создаем клавиатуру с кнопкой "Назад"
-            keyboard = InlineKeyboardBuilder()
-            keyboard.button(text="⬅️ Назад к ID", callback_data="back_to_user_id")
-            keyboard.adjust(1)
-
-            await message.answer(
-                "✅ ID пользователя принят.\n\n"
-                "Теперь введите username пользователя (без @). "
-                "Если username отсутствует, отправьте '-' :",
-                reply_markup=keyboard.as_markup()
-            )
-            await state.set_state(AdminStates.waiting_for_username)
-            self.logger.debug(f"Установлено состояние waiting_for_username для админа {message.from_user.id}")
-
-        except ValueError:
-            self.logger.warning(f"Неверный формат ID от админа {message.from_user.id}: {message.text}")
-
-            # Создаем клавиатуру с кнопкой "Назад"
-            keyboard = InlineKeyboardBuilder()
-            keyboard.button(text="⬅️ Назад", callback_data="back_to_admin")
-            keyboard.adjust(1)
-
-            await message.answer(
-                "❌ Неверный формат ID. Введите только цифры:\n"
-                "Пример: 123456789",
-                reply_markup=keyboard.as_markup()
-            )
-        except Exception as e:
-            self.logger.error(f"Ошибка при обработке ID пользователя: {str(e)}", exc_info=True)
-
-            # Создаем клавиатуру с кнопкой "Назад"
-            keyboard = InlineKeyboardBuilder()
-            keyboard.button(text="⬅️ Назад", callback_data="back_to_admin")
-            keyboard.adjust(1)
-
-            await message.answer(
-                "❌ Произошла ошибка при обработке ID пользователя.",
-                reply_markup=keyboard.as_markup()
-            )
-
-    # async def process_username(self, message: Message, state: FSMContext) -> None:
-    #     """
-    #     Обработка введенного username
-    #     """
-    #     username = message.text.strip()
-    #     self.logger.debug(f"Обработка username от админа {message.from_user.id}: {username}")
-    #
-    #     try:
-    #         if username == "-":
-    #             username = None
-    #             self.logger.debug("Username установлен как None")
-    #         else:
-    #             # Убираем @ если пользователь его ввел
-    #             username = username.lstrip('@')
-    #             self.logger.debug(f"Username после обработки: {username}")
-    #
-    #             # Проверяем валидность username
-    #             if not self._is_valid_username(username):
-    #                 self.logger.warning(f"Неверный формат username от админа {message.from_user.id}: {username}")
-    #
-    #                 # Создаем клавиатуру с кнопкой "Назад"
-    #                 keyboard = InlineKeyboardBuilder()
-    #                 keyboard.button(text="⬅️ Назад к ID", callback_data="back_to_user_id")
-    #                 keyboard.adjust(1)
-    #
-    #                 await message.answer(
-    #                     "❌ Неверный формат username. Используйте только латинские буквы, цифры и подчеркивания.\n\n"
-    #                     "Введите username еще раз или отправьте '-' если username отсутствует:",
-    #                     reply_markup=keyboard.as_markup()
-    #                 )
-    #                 return
-    #
-    #         await state.update_data(username=username)
-    #         self.logger.debug(f"Username {username} сохранен в состоянии")
-    #
-    #         # Создаем клавиатуру для выбора роли с кнопкой "Назад"
-    #         keyboard = InlineKeyboardBuilder()
-    #         keyboard.button(text="👤 Обычный пользователь", callback_data="role_user")
-    #         keyboard.button(text="🛠️ Администратор", callback_data="role_admin")
-    #         keyboard.button(text="⬅️ Назад к username", callback_data="back_to_username")
-    #         keyboard.button(text="❌ Отмена", callback_data="cancel_operation")
-    #         keyboard.adjust(2, 1, 1)
-    #
-    #         await message.answer(
-    #             "✅ Username принят.\n\n"
-    #             "Теперь выберите роль пользователя:",
-    #             reply_markup=keyboard.as_markup()
-    #         )
-    #         await state.set_state(AdminStates.waiting_for_role)
-    #         self.logger.debug(f"Установлено состояние waiting_for_role для админа {message.from_user.id}")
-    #
-    #     except Exception as e:
-    #         self.logger.error(f"Ошибка при обработке username: {str(e)}", exc_info=True)
-    #
-    #         # Создаем клавиатуру с кнопкой "Назад"
-    #         keyboard = InlineKeyboardBuilder()
-    #         keyboard.button(text="⬅️ Назад к ID", callback_data="back_to_user_id")
-    #         keyboard.adjust(1)
-    #
-    #         await message.answer(
-    #             "❌ Произошла ошибка при обработке username.",
-    #             reply_markup=keyboard.as_markup()
-    #         )
-
     async def process_quick_add_callback(self, callback: CallbackQuery, state: FSMContext) -> None:
         """
         Обработка быстрого добавления пользователя из пересланного сообщения
@@ -1255,25 +907,6 @@ class AdminRouter(BaseRouter):
                 reply_markup=keyboard.as_markup()
             )
             await state.clear()
-
-    async def back_to_user_id_input(self, callback: CallbackQuery, state: FSMContext) -> None:
-        """
-        Возврат к вводу ID пользователя
-        """
-        self.logger.info(f"Админ {callback.from_user.id} нажал 'Назад к ID'")
-
-        # Создаем клавиатуру с кнопкой "Назад"
-        keyboard = InlineKeyboardBuilder()
-        keyboard.button(text="⬅️ Назад", callback_data="back_to_admin")
-        keyboard.adjust(1)
-
-        await callback.message.edit_text(
-            "👤 **Добавление нового пользователя**\n\n"
-            "Введите ID пользователя (только цифры):",
-            reply_markup=keyboard.as_markup()
-        )
-        await state.set_state(AdminStates.waiting_for_user_input)
-        await callback.answer()
 
     async def cancel_operation(self, callback: CallbackQuery, state: FSMContext) -> None:
         """

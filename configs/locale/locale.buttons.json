@@ -1,7 +1,10 @@
 {
-  "btn_back": "Назад",
+  "btn_back": "⬅\uFE0F Назад",
   "btn_add_user": "\uD83D\uDC65 Добавить пользователя",
   "btn_list_users": "\uD83D\uDCCB Список пользователей",
   "btn_delete_user": "\uD83D\uDDD1 Удалить пользователя",
-  "btn_close": "❌ Закрыть"
+  "btn_close": "❌ Закрыть",
+  "btn_cancel": "❌ Отмена",
+  "btn_role_user": "\uD83D\uDC64 Обычный пользователь",
+  "btn_role_admin": "\uD83D\uDEE0\uFE0F Администратор"
 }
