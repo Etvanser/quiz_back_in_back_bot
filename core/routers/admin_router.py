@@ -116,7 +116,6 @@ class AdminRouter(BaseRouter):
         # Обработчики состояний для добавления пользователя
         self.router.message(AdminStates.waiting_for_user_input)(self._process_user_input)
         self.router.message(AdminStates.waiting_for_role)(self.process_role)
-        self.router.message(AdminStates.waiting_for_delete_confirmation)(self.process_delete_confirmation)
 
         # Callback-обработчики для кнопок
         self.router.callback_query(F.data == "add_user_cmd")(self._add_user_callback)
@@ -434,82 +433,59 @@ class AdminRouter(BaseRouter):
             user_id = int(callback.data.split("_")[2])
             self.logger.info(f"Админ {callback.from_user.id} подтвердил удаление пользователя {user_id}")
 
-            # Дополнительная проверка - получаем данные из состояния
-            data = await state.get_data()
-            state_user_id = data.get('delete_user_id')
-
-            if state_user_id != user_id:
-                self.logger.error(f"Несоответствие ID пользователя в состоянии: {state_user_id} != {user_id}")
-                await callback.answer("❌ Ошибка: несоответствие данных.")
-                return
-
-            # Проверяем, что пользователь все еще существует и не админ
             user_exists = await self.user_handler.user_exists(user_id)
             if not user_exists:
-                await callback.message.edit_text(
-                    "❌ Пользователь не найден.",
-                    reply_markup=InlineKeyboardBuilder()
-                    .button(text="⬅️ Назад", callback_data="back_to_admin")
-                    .adjust(1)
-                    .as_markup()
+                await self._send_or_edit_message(
+                    target=callback,
+                    text=self.locale.bot.get("error_user_not_found"),
+                    reply_markup=self._back_button_keyboard(callback_data="back_to_admin")
                 )
                 await state.clear()
                 return
 
             user_role = await self.user_handler.get_user_role(user_id)
             if user_role == UserRole.ADMIN:
-                await callback.message.edit_text(
-                    "❌ Нельзя удалить администратора.",
-                    reply_markup=InlineKeyboardBuilder()
-                    .button(text="⬅️ Назад", callback_data="back_to_admin")
-                    .adjust(1)
-                    .as_markup()
+                await self._send_or_edit_message(
+                    target=callback,
+                    text=self.locale.bot.get("error_delete_admin"),
+                    reply_markup=self._back_button_keyboard(callback_data="back_to_admin")
                 )
                 await state.clear()
                 return
 
             # Удаляем пользователя из БД
-            # Нужно добавить метод delete_user в DatabaseUserHandler
             result = await self.user_handler.delete_user(user_id)
 
             if result == ErrorCode.SUCCESSFUL:
-                await callback.message.edit_text(
-                    f"✅ **Пользователь успешно удален!**\n\n"
-                    f"**ID:** `{user_id}`\n"
-                    f"**Роль:** {user_role.value}",
-                    reply_markup=InlineKeyboardBuilder()
-                    .button(text="⬅️ В админ-панель", callback_data="back_to_admin")
-                    .adjust(1)
-                    .as_markup(),
-                    parse_mode="Markdown"
+                text = self.locale.ui.get("user_deleted_successful_desc").format(
+                    user_id=user_id,
+                    user_role=user_role.value
+                )
+                await self._send_or_edit_message(
+                    target=callback,
+                    text=text,
+                    reply_markup=self._back_button_keyboard(callback_data="back_to_admin")
                 )
 
-                # Логируем действие
                 admin_username = f"@{callback.from_user.username}" if callback.from_user.username else callback.from_user.full_name
                 self.logger.info(
                     f"Администратор {admin_username} ({callback.from_user.id}) "
                     f"удалил пользователя {user_id}"
                 )
             else:
-                await callback.message.edit_text(
-                    "❌ **Ошибка при удалении пользователя!**\n\n"
-                    "Попробуйте еще раз или обратитесь к разработчику.",
-                    reply_markup=InlineKeyboardBuilder()
-                    .button(text="⬅️ Назад", callback_data="back_to_admin")
-                    .adjust(1)
-                    .as_markup()
+                await self._send_or_edit_message(
+                    target=callback,
+                    text=self.locale.bot.get("error_delete_user_desc"),
+                    reply_markup=self._back_button_keyboard(callback_data="back_to_admin")
                 )
-
             await state.clear()
 
         except Exception as e:
             self.logger.error(f"Ошибка при подтверждении удаления: {str(e)}", exc_info=True)
-            await callback.message.edit_text(
-                "❌ Произошла ошибка при удалении пользователя.",
-                reply_markup=InlineKeyboardBuilder()
-                .button(text="⬅️ Назад", callback_data="back_to_admin")
-                .adjust(1)
-                .as_markup()
+            await self._send_or_edit_message(
+                target=callback,
+                text=self.locale.bot.get("error_delete_user_desc"),
+                reply_markup=self._back_button_keyboard(callback_data="back_to_admin")
             )
             await state.clear()
 
@@ -522,23 +498,7 @@ class AdminRouter(BaseRouter):
         """
         self.logger.info(f"Админ {callback.from_user.id} отменил удаление пользователя")
         await state.clear()
-
-        # Возвращаемся к списку пользователей для удаления
         await self.delete_users_callback(callback)
-
-    async def process_delete_confirmation(self, message: Message) -> None:
-        """
-        Обработка текстового подтверждения удаления
-
-        :param message: Сообщение от администратора
-        """
-        await message.answer(
-            "❌ Пожалуйста, используйте кнопки для подтверждения удаления.",
-            reply_markup=InlineKeyboardBuilder()
-            .button(text="⬅️ Назад", callback_data="back_to_admin")
-            .adjust(1)
-            .as_markup()
-        )
 
     async def users_list_callback(self, callback: CallbackQuery) -> None:
         """
