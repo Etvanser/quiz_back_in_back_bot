@@ -315,6 +315,26 @@ class AdminRouter(BaseRouter):
         await state.set_state(AdminStates.waiting_for_role)
         self.logger.debug(f"Установлено состояние waiting_for_role для админа {message.from_user.id}")
 
+    def _create_delete_user_list_keyboard(self, users: list[dict]) -> InlineKeyboardMarkup:
+        """
+        Создает клавиатуру со списком пользователей для удаления
+        """
+        keyboard = InlineKeyboardBuilder()
+
+        for user in users:
+            if user.get("role") == UserRole.ADMIN:
+                continue
+
+            username = f"@{user['username']}" if user['username'] else "без username"
+            keyboard.button(
+                text=f"🗑️ {user['first_name']} {user['last_name']} ({username})",
+                callback_data=f"delete_user_{user['user_id']}"
+            )
+
+        keyboard.button(text=self.locale.buttons.get("btn_back"), callback_data="back_to_admin")
+        keyboard.adjust(1)
+        return keyboard.as_markup()
+
     async def delete_users_callback(self, callback: CallbackQuery) -> None:
         """
         Обработка нажатия кнопки "Удалить пользователя"
@@ -324,48 +344,44 @@ class AdminRouter(BaseRouter):
         self.logger.info(f"Админ {callback.from_user.id} нажал кнопку 'Удалить пользователя'")
 
         try:
-            # Получаем список всех пользователей
             users = await self.user_handler.get_all_users()
 
             if not users:
-                await callback.message.edit_text(
-                    "🗑️ **Удаление пользователей**\n\n"
-                    "❌ Пользователи не найдены.",
-                    reply_markup=InlineKeyboardBuilder()
-                    .button(text="⬅️ Назад", callback_data="back_to_admin")
-                    .adjust(1)
-                    .as_markup()
+                text = self.locale.ui.get("delete_users_users_not_found")
+                await self._send_or_edit_message(
+                    target=callback,
+                    text=text,
+                    reply_markup=self._back_button_keyboard(callback_data="back_to_admin")
                 )
                 return
 
-            # Создаем клавиатуру с пользователями для удаления
-            keyboard = InlineKeyboardBuilder()
-
-            for user in users:
-                # Админ не может удалить другого админа
-                if user['role'] == UserRole.ADMIN:
-                    continue
-
-                username = f"@{user['username']}" if user['username'] else "без username"
-                keyboard.button(
-                    text=f"🗑️ {user['first_name']} {user['last_name']} ({username})",
-                    callback_data=f"delete_user_{user['user_id']}"
-                )
-
-            keyboard.button(text="⬅️ Назад", callback_data="back_to_admin")
-            keyboard.adjust(1)
-
-            await callback.message.edit_text(
-                "🗑️ **Удаление пользователей**\n\n"
-                "Выберите пользователя для удаления:\n"
-                "⚠️ *Администраторы не могут быть удалены*",
-                reply_markup=keyboard.as_markup(),
-                parse_mode="Markdown"
+            text = self.locale.ui.get("delete_users_desc")
+            await self._send_or_edit_message(
+                target=callback,
+                text=text,
+                reply_markup=self._create_delete_user_list_keyboard(users)
             )
 
         except Exception as e:
             self.logger.error(f"Ошибка при отображении списка для удаления: {str(e)}", exc_info=True)
-            await callback.answer("❌ Ошибка при загрузке списка пользователей.")
+            await callback.answer(self.locale.bot.get("error_users_list"))
+
+    def _create_yes_no_delete_user_keyboard(self, user_id: int) -> InlineKeyboardMarkup:
+        """
+        Создает клавиатуру с подтверждением удаления пользователя
+        """
+        keyboard = InlineKeyboardBuilder()
+
+        buttons = [
+            (self.locale.buttons.get("btn_yes_delete"), f"confirm_delete_{user_id}"),
+            (self.locale.buttons.get("btn_cancel"), f"cancel_delete_{user_id}")
+        ]
+
+        for text, callback_data in buttons:
+            keyboard.button(text=text, callback_data=callback_data)
+
+        keyboard.adjust(2)
+        return keyboard.as_markup()
 
     async def delete_user_callback(self, callback: CallbackQuery, state: FSMContext) -> None:
         """
@@ -375,46 +391,36 @@ class AdminRouter(BaseRouter):
         :param state: Состояние FSM
         """
         try:
-            # Извлекаем ID пользователя из callback data
             user_id = int(callback.data.split("_")[2])
             self.logger.info(f"Админ {callback.from_user.id} выбрал для удаления пользователя {user_id}")
 
-            # Получаем информацию о пользователе
             user_exists = await self.user_handler.user_exists(user_id)
             if not user_exists:
-                await callback.answer("❌ Пользователь не найден.")
+                await callback.answer(self.locale.bot.get("error_user_not_found"))
                 return
 
             user_role = await self.user_handler.get_user_role(user_id)
 
-            # Проверяем, что пользователь не админ
             if user_role == UserRole.ADMIN:
-                await callback.answer("❌ Нельзя удалить администратора.")
+                await callback.answer(self.locale.bot.get("warning_delete_admin"))
                 return
 
-            # Сохраняем данные в состоянии для подтверждения
             await state.update_data(delete_user_id=user_id)
 
-            # Создаем клавиатуру подтверждения
-            keyboard = InlineKeyboardBuilder()
-            keyboard.button(text="✅ Да, удалить", callback_data=f"confirm_delete_{user_id}")
-            keyboard.button(text="❌ Отмена", callback_data=f"cancel_delete_{user_id}")
-            keyboard.adjust(2)
-
-            await callback.message.edit_text(
-                f"🗑️ **Подтверждение удаления**\n\n"
-                f"Вы уверены, что хотите удалить пользователя?\n"
-                f"**ID:** `{user_id}`\n"
-                f"**Роль:** {user_role.value}\n\n"
-                f"⚠️ *Это действие нельзя отменить*",
-                reply_markup=keyboard.as_markup(),
-                parse_mode="Markdown"
+            text = self.locale.ui.get("confirm_delete_desc").format(
+                user_id=user_id,
+                user_role=user_role.value
+            )
+            await self._send_or_edit_message(
+                target=callback,
+                text=text,
+                reply_markup=self._create_yes_no_delete_user_keyboard(user_id)
             )
             await state.set_state(AdminStates.waiting_for_delete_confirmation)
 
         except Exception as e:
             self.logger.error(f"Ошибка при выборе пользователя для удаления: {str(e)}", exc_info=True)
-            await callback.answer("❌ Ошибка при выборе пользователя.")
+            await callback.answer(self.locale.bot.get("error_selected_user_delete"))
 
     async def confirm_delete_callback(self, callback: CallbackQuery, state: FSMContext) -> None:
         """
