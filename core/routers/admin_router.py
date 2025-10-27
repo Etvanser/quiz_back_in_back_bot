@@ -115,18 +115,16 @@ class AdminRouter(BaseRouter):
 
         # Обработчики состояний для добавления пользователя
         self.router.message(AdminStates.waiting_for_user_input)(self._process_user_input)
-        self.router.message(AdminStates.waiting_for_role)(self.process_role)
 
         # Callback-обработчики для кнопок
         self.router.callback_query(F.data == "add_user_cmd")(self._add_user_callback)
-        self.router.callback_query(F.data == "users_list_cmd")(self.users_list_callback)
-        self.router.callback_query(F.data == "delete_users_cmd")(self.delete_users_callback)
-        self.router.callback_query(F.data.startswith("role_"))(self.process_role_callback)
-        self.router.callback_query(F.data.startswith("quick_add_"))(self.process_quick_add_callback)
-        self.router.callback_query(F.data.startswith("delete_user_"))(self.delete_user_callback)
-        self.router.callback_query(F.data.startswith("confirm_delete_"))(self.confirm_delete_callback)
-        self.router.callback_query(F.data.startswith("cancel_delete_"))(self.cancel_delete_callback)
-        self.router.callback_query(F.data == "cancel_operation")(self.cancel_operation)
+        self.router.callback_query(F.data == "users_list_cmd")(self._users_list_callback)
+        self.router.callback_query(F.data == "delete_users_cmd")(self._delete_users_callback)
+        self.router.callback_query(F.data.startswith("role_"))(self._process_role_callback)
+        self.router.callback_query(F.data.startswith("delete_user_"))(self._delete_user_callback)
+        self.router.callback_query(F.data.startswith("confirm_delete_"))(self._confirm_delete_callback)
+        self.router.callback_query(F.data.startswith("cancel_delete_"))(self._cancel_delete_callback)
+        self.router.callback_query(F.data == "cancel_operation")(self._cancel_operation)
         self.router.callback_query(F.data == "back_to_admin")(self._back_to_admin_panel)
 
         self.logger.info("Обработчики AdminRouter успешно зарегистрированы")
@@ -334,7 +332,7 @@ class AdminRouter(BaseRouter):
         keyboard.adjust(1)
         return keyboard.as_markup()
 
-    async def delete_users_callback(self, callback: CallbackQuery) -> None:
+    async def _delete_users_callback(self, callback: CallbackQuery) -> None:
         """
         Обработка нажатия кнопки "Удалить пользователя"
 
@@ -382,7 +380,7 @@ class AdminRouter(BaseRouter):
         keyboard.adjust(2)
         return keyboard.as_markup()
 
-    async def delete_user_callback(self, callback: CallbackQuery, state: FSMContext) -> None:
+    async def _delete_user_callback(self, callback: CallbackQuery, state: FSMContext) -> None:
         """
         Обработка выбора пользователя для удаления
 
@@ -421,7 +419,7 @@ class AdminRouter(BaseRouter):
             self.logger.error(f"Ошибка при выборе пользователя для удаления: {str(e)}", exc_info=True)
             await callback.answer(self.locale.bot.get("error_selected_user_delete"))
 
-    async def confirm_delete_callback(self, callback: CallbackQuery, state: FSMContext) -> None:
+    async def _confirm_delete_callback(self, callback: CallbackQuery, state: FSMContext) -> None:
         """
         Подтверждение удаления пользователя
 
@@ -489,7 +487,7 @@ class AdminRouter(BaseRouter):
             )
             await state.clear()
 
-    async def cancel_delete_callback(self, callback: CallbackQuery, state: FSMContext) -> None:
+    async def _cancel_delete_callback(self, callback: CallbackQuery, state: FSMContext) -> None:
         """
         Отмена удаления пользователя
 
@@ -498,9 +496,9 @@ class AdminRouter(BaseRouter):
         """
         self.logger.info(f"Админ {callback.from_user.id} отменил удаление пользователя")
         await state.clear()
-        await self.delete_users_callback(callback)
+        await self._delete_users_callback(callback)
 
-    async def users_list_callback(self, callback: CallbackQuery) -> None:
+    async def _users_list_callback(self, callback: CallbackQuery) -> None:
         """
         Обработка нажатия кнопки "Список пользователей" - ЕДИНСТВЕННЫЙ способ посмотреть список
 
@@ -512,38 +510,34 @@ class AdminRouter(BaseRouter):
             users = await self.user_handler.get_all_users()
             self.logger.debug(f"Получено {len(users)} пользователей из БД")
 
-            # Создаем клавиатуру с кнопкой "Назад"
-            keyboard = InlineKeyboardBuilder()
-            keyboard.button(text="⬅️ Назад", callback_data="back_to_admin")
-            keyboard.adjust(1)
-
             if not users:
-                await callback.message.edit_text(
-                    "📋 **Список пользователей**\n\nПользователи не найдены.",
-                    reply_markup=keyboard.as_markup()
+                await self._send_or_edit_message(
+                    target=callback,
+                    text=self.locale.ui.get("users_list_empty"),
+                    reply_markup=self._back_button_keyboard(callback_data="back_to_admin")
                 )
                 self.logger.info("Список пользователей пуст")
             else:
                 user_list = []
                 for i, user in enumerate(users, 1):
-                    username = f"@{user['username']}" if user['username'] else "нет"
-                    last_name = user.get('last_name') or ""
-                    first_name = f"{user['first_name']} {last_name}"
-                    role_icon = "🛠️" if user['role'] == UserRole.ADMIN else "👤"
-                    role_text = "Админ" if user['role'] == UserRole.ADMIN else "Пользователь"
+                    username = f"@{user.get('username')}" if user.get('username') else "нет"
+                    last_name = user.get("last_name") or ""
+                    first_name = f"{user.get('first_name')} {last_name}"
+                    role_icon = "🛠️" if user.get("role") == UserRole.ADMIN else "👤"
+                    role_text = "Админ" if user.get("role") == UserRole.ADMIN else "Пользователь"
 
                     user_list.append(
                         f"{i}. {role_icon} ID: `{user['user_id']}` | {username} | {first_name} | {role_text}"
                     )
 
-                users_text = "\n".join(user_list)
-
-                await callback.message.edit_text(
-                    f"📋 **Список пользователей**\n\n"
-                    f"Всего пользователей: {len(users)}\n\n"
-                    f"{users_text}",
-                    reply_markup=keyboard.as_markup(),
-                    parse_mode="Markdown"
+                text = self.locale.ui.get("users_list_desc").format(
+                    users=len(users),
+                    users_text="\n".join(user_list)
+                )
+                await self._send_or_edit_message(
+                    target=callback,
+                    text=text,
+                    reply_markup=self._back_button_keyboard(callback_data="back_to_admin")
                 )
                 self.logger.info(f"Список из {len(users)} пользователей отправлен админу {callback.from_user.id}")
 
@@ -551,164 +545,22 @@ class AdminRouter(BaseRouter):
 
         except Exception as e:
             self.logger.error(f"Ошибка при обработке callback списка пользователей: {str(e)}", exc_info=True)
-            await callback.answer("❌ Ошибка при получении списка пользователей.")
+            await callback.answer(self.locale.bot.get("error_get_users_list"))
 
-    async def add_user_by_forward(self, message: Message, state: FSMContext) -> None:
-        """
-        Добавление пользователя по пересланному сообщению
-
-        :param message: Пересланное сообщение
-        :param state: Состояние FSM
-        """
-        forwarded_from = message.forward_from
-        self.logger.info(
-            f"Админ {message.from_user.id} пытается добавить пользователя по пересланному сообщению: {forwarded_from.id}")
-
-        if not forwarded_from:
-            await message.answer("❌ Не удалось получить информацию о пользователе из пересланного сообщения.")
-            return
-
-        try:
-            user_id = forwarded_from.id
-            username = forwarded_from.username
-            first_name = forwarded_from.first_name or ""
-            last_name = forwarded_from.last_name or ""
-
-            # Проверяем, существует ли уже пользователь
-            if await self.user_handler.user_exists(user_id):
-                self.logger.warning(
-                    f"Попытка добавить существующего пользователя {user_id} через пересланное сообщение")
-
-                # Создаем клавиатуру с кнопкой "Назад"
-                keyboard = InlineKeyboardBuilder()
-                keyboard.button(text="⬅️ В админ-панель", callback_data="back_to_admin")
-                keyboard.adjust(1)
-
-                await message.answer(
-                    f"❌ Пользователь уже существует в системе.\n\n"
-                    f"**ID:** `{user_id}`\n"
-                    f"**Username:** @{username if username else 'не указан'}\n"
-                    f"**Имя:** {first_name} {last_name}",
-                    reply_markup=keyboard.as_markup(),
-                    parse_mode="Markdown"
-                )
-                return
-
-            # Сохраняем данные пользователя в состоянии для быстрого доступа
-            await state.update_data(
-                quick_user_id=user_id,
-                quick_username=username,
-                quick_first_name=first_name,
-                quick_last_name=last_name
-            )
-
-            # Создаем клавиатуру для быстрого добавления
-            keyboard = InlineKeyboardBuilder()
-            keyboard.button(text="👤 Добавить как пользователя", callback_data=f"quick_add_user_{user_id}")
-            keyboard.button(text="🛠️ Добавить как админа", callback_data=f"quick_add_admin_{user_id}")
-            keyboard.button(text="❌ Отмена", callback_data="cancel_operation")
-            keyboard.adjust(1)
-
-            await message.answer(
-                f"👤 **Обнаружен пользователь из пересланного сообщения**\n\n"
-                f"**ID:** `{user_id}`\n"
-                f"**Username:** @{username if username else 'не указан'}\n"
-                f"**Имя:** {first_name} {last_name}\n\n"
-                f"Выберите роль для добавления:",
-                reply_markup=keyboard.as_markup(),
-                parse_mode="Markdown"
-            )
-
-        except Exception as e:
-            self.logger.error(f"Ошибка при обработке пересланного сообщения: {str(e)}", exc_info=True)
-            await message.answer("❌ Произошла ошибка при обработке пересланного сообщения.")
-
-    async def process_quick_add_callback(self, callback: CallbackQuery, state: FSMContext) -> None:
-        """
-        Обработка быстрого добавления пользователя из пересланного сообщения
-        """
-        self.logger.debug(f"Обработка быстрого добавления от админа {callback.from_user.id}: {callback.data}")
-
-        try:
-            # Разбираем callback data: quick_add_user_123456 или quick_add_admin_123456
-            parts = callback.data.split('_')
-            role_str = parts[2]  # user или admin
-            user_id = int(parts[3])
-
-            role = UserRole.USER if role_str == "user" else UserRole.ADMIN
-            self.logger.info(
-                f"Админ {callback.from_user.id} быстрого добавляет пользователя {user_id} с ролью {role.value}")
-
-            # Получаем сохраненные данные пользователя
-            data = await state.get_data()
-            username = data.get('quick_username')
-            first_name = data.get('quick_first_name', 'Пользователь')
-            last_name = data.get('quick_last_name', '')
-
-            # Добавляем пользователя в БД
-            result = await self.user_handler.add_user(
-                user_id=user_id,
-                username=username,
-                first_name=first_name,
-                last_name=last_name,
-                role=role
-            )
-
-            # Создаем клавиатуру с кнопкой "Назад в админ-панель"
-            keyboard = InlineKeyboardBuilder()
-            keyboard.button(text="⬅️ В админ-панель", callback_data="back_to_admin")
-            keyboard.adjust(1)
-
-            if result == ErrorCode.SUCCESSFUL:
-                role_text = "обычного пользователя" if role == UserRole.USER else "администратора"
-                await callback.message.edit_text(
-                    f"✅ **Пользователь успешно добавлен!**\n\n"
-                    f"**ID:** `{user_id}`\n"
-                    f"**Username:** {'@' + username if username else 'не указан'}\n"
-                    f"**Имя:** {first_name} {last_name}\n"
-                    f"**Роль:** {role_text}\n\n"
-                    f"Пользователь теперь имеет доступ к боту.",
-                    reply_markup=keyboard.as_markup(),
-                    parse_mode="Markdown"
-                )
-
-                # Логируем действие
-                admin_username = f"@{callback.from_user.username}" if callback.from_user.username else callback.from_user.full_name
-                self.logger.info(
-                    f"Администратор {admin_username} ({callback.from_user.id}) "
-                    f"успешно добавил пользователя {user_id} с ролью {role.value} (быстрое добавление)"
-                )
-            else:
-                self.logger.error(f"Ошибка при быстром добавлении пользователя {user_id}: {result}")
-                await callback.message.edit_text(
-                    "❌ **Ошибка при добавлении пользователя!**\n\n"
-                    "Попробуйте еще раз или обратитесь к разработчику.",
-                    reply_markup=keyboard.as_markup(),
-                    parse_mode="Markdown"
-                )
-
-            await state.clear()
-            await callback.answer()
-
-        except Exception as e:
-            self.logger.error(f"Ошибка при быстром добавлении пользователя: {str(e)}", exc_info=True)
-            await callback.answer("❌ Ошибка при добавлении пользователя.")
-
-    async def process_role_callback(self, callback: CallbackQuery, state: FSMContext) -> None:
+    async def _process_role_callback(self, callback: CallbackQuery, state: FSMContext) -> None:
         """
         Обработка выбора роли через callback
         """
         self.logger.debug(f"Обработка callback выбора роли от админа {callback.from_user.id}: {callback.data}")
 
         try:
-            role_str = callback.data.split("_")[1]  # role_user или role_admin
+            role_str = callback.data.split("_")[1]
             role = UserRole.USER if role_str == "user" else UserRole.ADMIN
             self.logger.info(f"Админ {callback.from_user.id} выбрал роль: {role.value}")
 
-            # Получаем данные из состояния
             data = await state.get_data()
-            user_id = data.get('user_id')
-            username = data.get('username')
+            user_id = data.get("user_id")
+            username = data.get("username")
             first_name = data.get("first_name")
             last_name = data.get("last_name")
 
@@ -720,34 +572,28 @@ class AdminRouter(BaseRouter):
                 await state.clear()
                 return
 
-            # Добавляем пользователя в БД
             self.logger.info(f"Попытка добавления пользователя {user_id} с ролью {role.value}")
             result = await self.user_handler.add_user(
                 user_id=user_id,
                 username=username,
-                first_name=first_name,  # Можно будет обновить позже
+                first_name=first_name,
                 last_name=last_name,
                 role=role
             )
 
-            # Создаем клавиатуру с кнопкой "Назад в админ-панель"
-            keyboard = InlineKeyboardBuilder()
-            keyboard.button(text="⬅️ В админ-панель", callback_data="back_to_admin")
-            keyboard.adjust(1)
-
             if result == ErrorCode.SUCCESSFUL:
-                role_text = "обычного пользователя" if role == UserRole.USER else "администратора"
-                await callback.message.edit_text(
-                    f"✅ **Пользователь успешно добавлен!**\n\n"
-                    f"**ID:** `{user_id}`\n"
-                    f"**Username:** {'@' + username if username else 'не указан'}\n"
-                    f"**Роль:** {role_text}\n\n"
-                    f"Пользователь теперь имеет доступ к боту.",
-                    reply_markup=keyboard.as_markup(),
-                    parse_mode="Markdown"
+                text = self.locale.ui.get("").format(
+                    user_id=user_id,
+                    username = username if username else "не указан",
+                    role="Пользователь" if role == UserRole.USER else "Админ"
                 )
 
-                # Логируем действие
+                await self._send_or_edit_message(
+                    target=callback,
+                    text=text,
+                    reply_markup=self._back_button_keyboard(callback_data="back_to_admin")
+                )
+
                 admin_username = f"@{callback.from_user.username}" if callback.from_user.username else callback.from_user.full_name
                 self.logger.info(
                     f"Администратор {admin_username} ({callback.from_user.id}) "
@@ -755,126 +601,22 @@ class AdminRouter(BaseRouter):
                 )
             else:
                 self.logger.error(f"Ошибка при добавлении пользователя {user_id}: {result}")
-                await callback.message.edit_text(
-                    "❌ **Ошибка при добавлении пользователя!**\n\n"
-                    "Попробуйте еще раз или обратитесь к разработчику.",
-                    reply_markup=keyboard.as_markup(),
-                    parse_mode="Markdown"
+                await self._send_or_edit_message(
+                    target=callback,
+                    text=self.locale.bot.get("error_add_user"),
+                    reply_markup=self._back_button_keyboard(callback_data="back_to_admin")
                 )
-
             await state.clear()
             self.logger.debug(f"Состояние очищено для админа {callback.from_user.id}")
             await callback.answer()
 
         except Exception as e:
             self.logger.error(f"Ошибка при обработке выбора роли: {str(e)}", exc_info=True)
-            await callback.message.edit_text("❌ Произошла ошибка при добавлении пользователя.")
+            await callback.message.edit_text(self.locale.bot.get("error_add_user"))
             await state.clear()
             await callback.answer()
 
-    async def process_role(self, message: Message, state: FSMContext) -> None:
-        """
-        Обработка введенной роли (текстовый ввод)
-        """
-        role_text = message.text.strip().lower()
-        self.logger.debug(f"Обработка текстового ввода роли от админа {message.from_user.id}: {role_text}")
-
-        try:
-            if role_text in ['user', 'пользователь', 'обычный']:
-                role = UserRole.USER
-            elif role_text in ['admin', 'админ', 'администратор']:
-                role = UserRole.ADMIN
-            else:
-                self.logger.warning(f"Неверный ввод роли от админа {message.from_user.id}: {role_text}")
-
-                # Создаем клавиатуру с кнопкой "Назад"
-                keyboard = InlineKeyboardBuilder()
-                keyboard.button(text="⬅️ Назад", callback_data="back_to_username")
-                keyboard.adjust(1)
-
-                await message.answer(
-                    "❌ Неверная роль. Используйте:\n"
-                    "- 'user' или 'пользователь' для обычного пользователя\n"
-                    "- 'admin' или 'админ' для администратора",
-                    reply_markup=keyboard.as_markup()
-                )
-                return
-
-            self.logger.info(f"Админ {message.from_user.id} выбрал роль через текст: {role.value}")
-
-            # Получаем данные из состояния
-            data = await state.get_data()
-            user_id = data.get('user_id')
-            username = data.get('username')
-
-            self.logger.debug(f"Данные из состояния: user_id={user_id}, username={username}")
-
-            if not user_id:
-                self.logger.error("Не найден user_id в состоянии")
-                await message.answer("❌ Ошибка: данные сессии утеряны. Начните заново.")
-                await state.clear()
-                return
-
-            # Добавляем пользователя в БД
-            self.logger.info(f"Попытка добавления пользователя {user_id} с ролью {role.value}")
-            result = await self.user_handler.add_user(
-                user_id=user_id,
-                username=username,
-                first_name="Пользователь",
-                last_name="",
-                role=role
-            )
-
-            # Создаем клавиатуру с кнопкой "Назад в админ-панель"
-            keyboard = InlineKeyboardBuilder()
-            keyboard.button(text="⬅️ В админ-панель", callback_data="back_to_admin")
-            keyboard.adjust(1)
-
-            if result == ErrorCode.SUCCESSFUL:
-                role_text = "обычного пользователя" if role == UserRole.USER else "администратора"
-                await message.answer(
-                    f"✅ **Пользователь успешно добавлен!**\n\n"
-                    f"**ID:** `{user_id}`\n"
-                    f"**:*Имя пользователя* {'@' + username if username else 'не указан'}\n"
-                    f"**ФИО:** {username['first_name']} {username['last_name']}"
-                    f"**Роль:** {role_text}\n\n"
-                    f"Пользователь теперь имеет доступ к боту.",
-                    reply_markup=keyboard.as_markup(),
-                    parse_mode="Markdown"
-                )
-
-                # Логируем действие
-                admin_username = f"@{message.from_user.username}" if message.from_user.username else message.from_user.full_name
-                self.logger.info(
-                    f"Администратор {admin_username} ({message.from_user.id}) "
-                    f"успешно добавил пользователя {user_id} с ролью {role.value}"
-                )
-            else:
-                self.logger.error(f"Ошибка при добавлении пользователя {user_id}: {result}")
-                await message.answer(
-                    "❌ **Ошибка при добавлении пользователя!**\n\n"
-                    "Попробуйте еще раз или обратитесь к разработчику.",
-                    reply_markup=keyboard.as_markup()
-                )
-
-            await state.clear()
-            self.logger.debug(f"Состояние очищено для админа {message.from_user.id}")
-
-        except Exception as e:
-            self.logger.error(f"Ошибка при обработке текстовой роли: {str(e)}", exc_info=True)
-
-            # Создаем клавиатуру с кнопкой "Назад"
-            keyboard = InlineKeyboardBuilder()
-            keyboard.button(text="⬅️ Назад к username", callback_data="back_to_username")
-            keyboard.adjust(1)
-
-            await message.answer(
-                "❌ Произошла ошибка при добавлении пользователя.",
-                reply_markup=keyboard.as_markup()
-            )
-            await state.clear()
-
-    async def cancel_operation(self, callback: CallbackQuery, state: FSMContext) -> None:
+    async def _cancel_operation(self, callback: CallbackQuery, state: FSMContext) -> None:
         """
         Отмена операции
         """
@@ -889,23 +631,3 @@ class AdminRouter(BaseRouter):
         except Exception as e:
             self.logger.error(f"Ошибка при отмене операции: {str(e)}", exc_info=True)
             await callback.answer("❌ Ошибка при отмене операции.")
-
-    def _is_valid_username(self, username: str) -> bool:
-        """
-        Проверяет валидность username
-        """
-        if not username:
-            self.logger.debug("Username пустой - валидный")
-            return True
-
-        # Telegram username может содержать только a-z, 0-9 и _
-        import re
-        pattern = r'^[a-zA-Z0-9_]{5,32}$'
-        is_valid = bool(re.match(pattern, username))
-
-        if not is_valid:
-            self.logger.debug(f"Username '{username}' не прошел валидацию")
-        else:
-            self.logger.debug(f"Username '{username}' прошел валидацию")
-
-        return is_valid
