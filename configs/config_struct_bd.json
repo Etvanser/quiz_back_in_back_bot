@@ -21,6 +21,18 @@
           "join_date": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
           "role": "TEXT DEFAULT 'user'"
         }
+      },
+      {
+        "table_name": "quiz_players",
+        "columns": {
+          "player_id": "INTEGER PRIMARY KEY AUTOINCREMENT",
+          "first_name": "TEXT NOT NULL",
+          "last_name": "TEXT NOT NULL",
+          "photo": "TEXT",
+          "games_played": "INTEGER DEFAULT 0",
+          "player_level": "TEXT DEFAULT 'Новичок'",
+          "numeric_level": "INTEGER DEFAULT 0"
+        }
       }
     ],
     "safe_mode": true

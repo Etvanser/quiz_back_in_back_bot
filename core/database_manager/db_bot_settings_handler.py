@@ -11,7 +11,7 @@ class DatabaseBotSettingsHandler(BaseDatabaseHandler):
     """
     Обработчик таблицы с настройками бота
     """
-    _table_name : TableBD
+    _table_name : str
 
     def __init__(self):
         super().__init__()

@@ -7,3 +7,4 @@ class TableBD(str, Enum):
     """
     BOT_SETTINGS = "bot_settings"
     USERS = "users"
+    QUIZ_PLAYERS = "quiz_players"

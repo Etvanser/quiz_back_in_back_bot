@@ -3,7 +3,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from core import Config
 from core.database_manager.db_bot_settings_handler import DatabaseBotSettingsHandler
-from core.database_manager.db_user_handler import DatabaseUserHandler
+from core.database_manager.db_users_handler import DatabaseUserHandler
 from core.middleware.auth_middleware import AuthMiddleware
 from core.router_recorder.router_recorder import RoutersRecorder
 from errors import ErrorCode

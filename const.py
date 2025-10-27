@@ -17,6 +17,9 @@ BD_CONFIG = CONFIG_DIR / "config_struct_bd.json"
 # Каталог БД
 BD_DIR = ROOT_DIR / "database"
 
+# Каталог с фото игроков
+PHOTOS_DIR = ROOT_DIR / "photos"
+
 
 # Конфиг модулей локализации
 LOCALE_MODULE_CONFIG = CONFIG_DIR / "config_locale_module.json"

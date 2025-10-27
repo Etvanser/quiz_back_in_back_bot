@@ -7,5 +7,7 @@
   "btn_cancel": "❌ Отмена",
   "btn_yes_delete": "✅ Да, удалить",
   "btn_role_user": "\uD83D\uDC64 Обычный пользователь",
-  "btn_role_admin": "\uD83D\uDEE0\uFE0F Администратор"
+  "btn_role_admin": "\uD83D\uDEE0\uFE0F Администратор",
+  "btn_manage_users": "Управление пользователями",
+  "btn_manage_players": "Управление игроками"
 }

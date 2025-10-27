@@ -13,3 +13,7 @@ class ErrorCode(IntEnum):
     TOKEN_ERROR = 5          # Ошибка токена для бота
     ENGINE_INIT_ERROR = 6    # Ошибка инициализация движка
     PARTIAL_SUCCESS = 7      # Частичный успех
+    USER_NOT_FOUND = 8
+    DATABASE_ERROR = 9
+    USER_ALREADY_EXISTS = 10
+    INVALID_INPUT = 11

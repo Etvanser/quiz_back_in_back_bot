@@ -4,7 +4,7 @@ from aiogram import BaseMiddleware
 from aiogram.dispatcher.flags import get_flag
 from aiogram.types import Message, User
 
-from core.database_manager.db_user_handler import DatabaseUserHandler
+from core.database_manager.db_users_handler import DatabaseUserHandler
 from logger import Logger
 
 
