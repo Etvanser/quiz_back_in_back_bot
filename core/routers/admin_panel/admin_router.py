@@ -3,7 +3,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
 
-from core.database_manager.db_players_habdler import DatabaseQuizPlayerHandler
+from core.database_manager.db_players_handler import DatabaseQuizPlayerHandler
 from core.database_manager.db_users_handler import UserRole, DatabaseUserHandler
 from core.router_recorder import RoutersRecorder
 from core.routers import BaseRouter
@@ -66,40 +66,14 @@ class AdminRouter(BaseRouter):
         # Команды администратора - оставляем только /admin
         self.router.message(Command("admin"))(self._admin_panel)
 
-        # Обработчики для первого уровня админ-панели
-        self.router.callback_query(F.data == "manage_users_cmd")(self.user_manager.manage_users_panel)
-        self.router.callback_query(F.data == "manage_players_cmd")(self.players_manager.manage_players_panel)
-
-        # Обработчики для управления игроками
-        self.router.callback_query(F.data == "add_player_cmd")(self.players_manager.add_player_callback)
-        self.router.callback_query(F.data == "players_list_cmd")(self.players_manager.players_list_callback)
-        self.router.callback_query(F.data == "delete_players_cmd")(self.players_manager.delete_players_callback)
-        self.router.callback_query(F.data == "cancel_player_operation")(self.players_manager.cancel_operation)
-        self.router.callback_query(F.data.startswith("delete_player_"))(self.players_manager.delete_player_callback)
-        self.router.callback_query(F.data.startswith("confirm_delete_player_"))(self.players_manager.confirm_delete_player_callback)
-        self.router.callback_query(F.data == "cancel_delete_player")(self.players_manager.cancel_delete_player_callback)
-
-        # Обработчики состояний для добавления игрока
-        self.router.message(AdminStates.waiting_for_player_name)(self.players_manager.process_player_name_input)
-        self.router.message(AdminStates.waiting_for_player_photo)(self.players_manager.process_player_photo_input)
-        self.router.message(AdminStates.waiting_for_player_games)(self.players_manager.process_player_games_input)
-
         # Обработчик возврата в админ панель
         self.router.callback_query(F.data == "back_to_admin")(self._back_to_admin_panel)
+        self.router.callback_query(F.data == "cancel_operation")(self._cancel_operation)
 
-        # Обработчики состояний для добавления пользователя
-        self.router.message(AdminStates.waiting_for_user_input)(self.user_manager.process_user_input)
-
-        # Callback-обработчики для кнопок
-        self.router.callback_query(F.data == "add_user_cmd")(self.user_manager.add_user_callback)
-        self.router.callback_query(F.data == "users_list_cmd")(self.user_manager.users_list_callback)
-        self.router.callback_query(F.data == "delete_users_cmd")(self.user_manager.delete_users_callback)
-        self.router.callback_query(F.data.startswith("role_"))(self.user_manager.process_role_callback)
-        self.router.callback_query(F.data.startswith("delete_user_"))(self.user_manager.delete_user_callback)
-        self.router.callback_query(F.data.startswith("confirm_delete_"))(self.user_manager.confirm_delete_callback)
-        self.router.callback_query(F.data.startswith("cancel_delete_"))(self.user_manager.cancel_delete_callback)
-        self.router.callback_query(F.data == "cancel_operation")(self.cancel_operation)
-        self.router.callback_query(F.data == "back_to_admin")(self._back_to_admin_panel)
+        # Обработчики по работе с пользователями
+        self._users_manager_handlers()
+        #Обработчики по работе с игроками
+        self._players_manager_handlers()
 
         self.logger.info("Обработчики AdminRouter успешно зарегистрированы")
 
@@ -143,7 +117,7 @@ class AdminRouter(BaseRouter):
         await self._admin_panel(callback)
         await callback.answer()
 
-    async def cancel_operation(self, callback: CallbackQuery, state: FSMContext) -> None:
+    async def _cancel_operation(self, callback: CallbackQuery, state: FSMContext) -> None:
         """
         Отмена операции
         """
@@ -157,7 +131,41 @@ class AdminRouter(BaseRouter):
 
         except Exception as e:
             self.logger.error(f"Ошибка при отмене операции: {str(e)}", exc_info=True)
-            await callback.answer("❌ Ошибка при отмене операции.")
+            await callback.answer("❌ Ошибка при отмене операции.")\
 
+
+    def _users_manager_handlers(self) -> None:
+        """
+        Обработчики по работе с users
+        """
+        self.router.callback_query(F.data == "manage_users_cmd")(self.user_manager.manage_users_panel)
+        self.router.message(AdminStates.waiting_for_user_input)(self.user_manager.process_user_input)
+        self.router.callback_query(F.data == "add_user_cmd")(self.user_manager.add_user_callback)
+        self.router.callback_query(F.data == "users_list_cmd")(self.user_manager.users_list_callback)
+        self.router.callback_query(F.data == "delete_users_cmd")(self.user_manager.delete_users_callback)
+        self.router.callback_query(F.data.startswith("role_"))(self.user_manager.process_role_callback)
+        self.router.callback_query(F.data.startswith("delete_user_"))(self.user_manager.delete_user_callback)
+        self.router.callback_query(F.data.startswith("confirm_delete_user_"))(self.user_manager.confirm_delete_callback)
+        self.router.callback_query(F.data.startswith("cancel_delete_user"))(self.user_manager.cancel_delete_callback)
+
+    def _players_manager_handlers(self) -> None:
+        """
+        Обработчики по работе с игроками
+        """
+        self.router.callback_query(F.data == "manage_players_cmd")(self.players_manager.manage_players_panel)
+        self.router.callback_query(F.data == "add_player_cmd")(self.players_manager.add_player_callback)
+        self.router.callback_query(F.data == "players_list_cmd")(self.players_manager.players_list_callback)
+        self.router.callback_query(F.data == "delete_players_cmd")(self.players_manager.delete_players_callback)
+        self.router.callback_query(F.data == "cancel_player_operation")(self.players_manager.cancel_operation)
+        self.router.callback_query(F.data.startswith("delete_player_"))(self.players_manager.delete_player_callback)
+        self.router.callback_query(F.data.startswith("confirm_delete_player_"))(self.players_manager.confirm_delete_player_callback)
+        self.router.callback_query(F.data == "cancel_delete_player")(self.players_manager.cancel_delete_player_callback)
+        self.router.callback_query(F.data == "skip_photo")(self.players_manager.skip_photo_callback)
+        self.router.callback_query(F.data == "skip_nickname")(self.players_manager.skip_nickname_callback)
+
+        self.router.message(AdminStates.waiting_for_player_nickname)(self.players_manager.process_player_nickname_input)
+        self.router.message(AdminStates.waiting_for_player_name)(self.players_manager.process_player_name_input)
+        self.router.message(AdminStates.waiting_for_player_photo)(self.players_manager.process_player_photo_input)
+        self.router.message(AdminStates.waiting_for_player_games)(self.players_manager.process_player_games_input)
 
 

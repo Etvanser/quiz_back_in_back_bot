@@ -5,9 +5,10 @@
   "btn_delete_user": "\uD83D\uDDD1 Удалить пользователя",
   "btn_close": "❌ Закрыть",
   "btn_cancel": "❌ Отмена",
-  "btn_yes_delete": "✅ Да, удалить",
+  "btn_confirm_delete": "✅ Да, удалить",
   "btn_role_user": "\uD83D\uDC64 Обычный пользователь",
   "btn_role_admin": "\uD83D\uDEE0\uFE0F Администратор",
   "btn_manage_users": "Управление пользователями",
-  "btn_manage_players": "Управление игроками"
+  "btn_manage_players": "Управление игроками",
+  "btn_skip": "Пропустить"
 }

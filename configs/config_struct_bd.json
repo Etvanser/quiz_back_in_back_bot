@@ -28,10 +28,11 @@
           "player_id": "INTEGER PRIMARY KEY AUTOINCREMENT",
           "first_name": "TEXT NOT NULL",
           "last_name": "TEXT NOT NULL",
+          "nickname": "TEXT",
           "photo": "TEXT",
           "games_played": "INTEGER DEFAULT 0",
-          "player_level": "TEXT DEFAULT 'Новичок'",
-          "numeric_level": "INTEGER DEFAULT 0"
+          "rank_player": "TEXT DEFAULT 'Новичок'",
+          "level": "INTEGER DEFAULT 0"
         }
       }
     ],

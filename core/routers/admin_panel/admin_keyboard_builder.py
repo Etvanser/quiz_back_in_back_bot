@@ -157,7 +157,9 @@ class AdminKeyboardBuilder:
         return InlineKeyboardMarkup(inline_keyboard=buttons)
 
     def players_delete_keyboard(self, players: list) -> InlineKeyboardMarkup:
-        """Клавиатура для удаления игроков"""
+        """
+        Клавиатура для удаления игроков
+        """
         buttons = []
 
         # Добавляем кнопки для каждого игрока
@@ -176,18 +178,70 @@ class AdminKeyboardBuilder:
 
         return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-    def confirm_delete_player_keyboard(self, player_id: int) -> InlineKeyboardMarkup:
-        """Клавиатура подтверждения удаления игрока"""
+    def confirm_delete_user_keyboard(self, user_id: int) -> InlineKeyboardMarkup:
         buttons = [
             [
                 InlineKeyboardButton(
-                    text="✅ Да, удалить",
+                    text=self.locale.buttons.get("btn_confirm_delete"),
+                    callback_data=f"confirm_delete_user_{user_id}"
+                ),
+                InlineKeyboardButton(
+                    text=self.locale.buttons.get("btn_cancel"),
+                    callback_data="cancel_delete_user"
+                )
+            ]
+        ]
+        return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+    def confirm_delete_player_keyboard(self, player_id: int) -> InlineKeyboardMarkup:
+        buttons = [
+            [
+                InlineKeyboardButton(
+                    text=self.locale.buttons.get("btn_confirm_delete"),
                     callback_data=f"confirm_delete_player_{player_id}"
                 ),
                 InlineKeyboardButton(
-                    text="❌ Отмена",
-                    callback_data=f"cancel_delete_player"
+                    text=self.locale.buttons.get("btn_cancel"),
+                    callback_data="cancel_delete_player"
                 )
             ]
+        ]
+        return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+    @property
+    def photo_upload_keyboard(self) -> InlineKeyboardMarkup:
+        """
+        Создает клавиатуру для загрузки фото с кнопкой пропуска
+
+        :return: InlineKeyboardMarkup с кнопками
+        """
+        buttons = [
+            [InlineKeyboardButton(
+                text=self.locale.buttons.get("btn_skip"),
+                callback_data="skip_photo"
+            )],
+            [InlineKeyboardButton(
+                text=self.locale.buttons.get("btn_cancel"),
+                callback_data="cancel_operation"
+            )]
+        ]
+        return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+    @property
+    def nickname_skip_keyboard(self) -> InlineKeyboardMarkup:
+        """
+        Создает клавиатуру для ввода ника с кнопкой пропуска
+
+        :return: InlineKeyboardMarkup с кнопками
+        """
+        buttons = [
+            [InlineKeyboardButton(
+                text=self.locale.buttons.get("btn_skip"),
+                callback_data="skip_nickname"
+            )],
+            [InlineKeyboardButton(
+                text=self.locale.buttons.get("btn_cancel"),
+                callback_data="cancel_operation"
+            )]
         ]
         return InlineKeyboardMarkup(inline_keyboard=buttons)

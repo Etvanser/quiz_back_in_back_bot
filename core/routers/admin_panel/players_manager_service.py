@@ -1,7 +1,9 @@
+import tempfile
+
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
-from core.database_manager.db_players_habdler import DatabaseQuizPlayerHandler
+from core.database_manager.db_players_handler import DatabaseQuizPlayerHandler
 from core.locale.locale import Locale
 from core.routers.admin_panel import AdminMessageSender, AdminKeyboardBuilder, AdminStates
 from errors import ErrorCode
@@ -9,22 +11,30 @@ from logger import Logger
 
 
 class PlayersManagerService:
+    """
+    Сервис управления игроками
+    """
 
     def __init__(self, players_handler: DatabaseQuizPlayerHandler, keyboard: AdminKeyboardBuilder):
+        """
+        Инициализация сервиса управления игроками
+
+        :param players_handler: Обработчик базы данных игроков
+        :param keyboard: Построитель клавиатур для админ-панели
+        """
         self.locale = Locale()
         self.logger = Logger().get_logger()
         self.keyboard = keyboard
         self.players_handler = players_handler
 
-
     async def manage_players_panel(self, callback: CallbackQuery, state: FSMContext) -> None:
         """
-        Панель управления играками - ВТОРОЙ УРОВЕНЬ
+        Панель управления игроками - ВТОРОЙ УРОВЕНЬ
 
         :param callback: Callback запрос от кнопки
         :param state: Состояние FSM
         """
-        self.logger.info(f"Админ {callback.from_user.id} открыл панель управления играками")
+        self.logger.info(f"Админ {callback.from_user.id} открыл панель управления игроками")
         await state.clear()
 
         try:
@@ -34,7 +44,7 @@ class PlayersManagerService:
                 reply_markup=self.keyboard.admin_players_management_menu
             )
         except Exception as e:
-            self.logger.error(f"Ошибка при отображении панели управления играками: {str(e)}")
+            self.logger.error(f"Ошибка при отображении панели управления игроками: {str(e)}")
             await callback.message.answer(self.locale.bot.get("error_display_admin_panel"))
 
         await callback.answer()
@@ -74,7 +84,6 @@ class PlayersManagerService:
         :param message: Сообщение с именем и фамилией
         :param state: Состояние FSM
         """
-        user_id = message.from_user.id
         name_input = message.text.strip()
 
         try:
@@ -82,7 +91,7 @@ class PlayersManagerService:
             name_parts = name_input.split()
             if len(name_parts) < 2:
                 await message.answer(
-                    self.locale.ui.get("admin_player_name_format_error"),
+                    self.locale.bot.get("admin_player_name_format_error"),
                     reply_markup=self.keyboard.create_single_button(
                         text=self.locale.buttons.get("btn_cancel"),
                         callback_data="cancel_operation"
@@ -99,15 +108,12 @@ class PlayersManagerService:
                 player_last_name=last_name
             )
 
-            # Переходим к запросу фото
-            await state.set_state(AdminStates.waiting_for_player_photo)
+            # УСТАНАВЛИВАЕМ СОСТОЯНИЕ ДЛЯ НИКНЕЙМА
+            await state.set_state(AdminStates.waiting_for_player_nickname)
 
             await message.answer(
-                self.locale.ui.get("admin_add_player_photo_desc"),
-                reply_markup=self.keyboard.create_single_button(
-                    text=self.locale.buttons.get("btn_cancel"),
-                    callback_data="cancel_operation"
-                )
+                text=self.locale.ui.get("admin_add_player_nickname_desc"),
+                reply_markup=self.keyboard.nickname_skip_keyboard
             )
 
         except Exception as e:
@@ -120,6 +126,64 @@ class PlayersManagerService:
                 )
             )
 
+    async def process_player_nickname_input(self, message: Message, state: FSMContext) -> None:
+        """
+        Обработка ввода никнейма игрока
+
+        :param message: Сообщение с никнеймом
+        :param state: Состояние FSM
+        """
+        nickname_input = message.text.strip()
+
+        try:
+            # Сохраняем никнейм в состоянии
+            await state.update_data(player_nickname=nickname_input)
+
+            # Переходим к запросу фото
+            await state.set_state(AdminStates.waiting_for_player_photo)
+
+            await message.answer(
+                self.locale.ui.get("admin_add_player_photo_desc"),
+                reply_markup=self.keyboard.photo_upload_keyboard
+            )
+
+        except Exception as e:
+            self.logger.error(f"Ошибка при обработке никнейма игрока: {str(e)}")
+            await message.answer(
+                self.locale.bot.get("error_operation"),
+                reply_markup=self.keyboard.create_single_button(
+                    text=self.locale.buttons.get("btn_cancel"),
+                    callback_data="cancel_operation"
+                )
+            )
+
+    async def skip_nickname_callback(self, callback: CallbackQuery, state: FSMContext) -> None:
+        """
+        Обработчик пропуска ввода никнейма
+
+        :param callback: Callback запрос от кнопки
+        :param state: Состояние FSM
+        """
+        self.logger.info(f"Админ {callback.from_user.id} пропустил ввод никнейма")
+
+        try:
+            # Сохраняем None для никнейма
+            await state.update_data(player_nickname=None)
+
+            # Переходим к запросу фото
+            await state.set_state(AdminStates.waiting_for_player_photo)
+
+            await AdminMessageSender().send_or_edit_message(
+                target=callback,
+                text=self.locale.ui.get("admin_add_player_photo_desc"),
+                reply_markup=self.keyboard.photo_upload_keyboard
+            )
+            await callback.answer("✅ Ввод никнейма пропущен")
+
+        except Exception as e:
+            self.logger.error(f"Ошибка при пропуске никнейма: {str(e)}")
+            await callback.answer("❌ Ошибка при пропуске никнейма")
+
     async def process_player_photo_input(self, message: Message, state: FSMContext) -> None:
         """
         Обработка загрузки фото игрока
@@ -127,8 +191,6 @@ class PlayersManagerService:
         :param message: Сообщение с фото
         :param state: Состояние FSM
         """
-        user_id = message.from_user.id
-
         try:
             if not message.photo:
                 await message.answer(
@@ -168,6 +230,36 @@ class PlayersManagerService:
                 )
             )
 
+    async def skip_photo_callback(self, callback: CallbackQuery, state: FSMContext) -> None:
+        """
+        Обработчик пропуска загрузки фото
+
+        :param callback: Callback запрос от кнопки
+        :param state: Состояние FSM
+        """
+        self.logger.info(f"Админ {callback.from_user.id} пропустил загрузку фото")
+
+        try:
+            # Сохраняем None для фото
+            await state.update_data(player_photo_file_id=None)
+
+            # Переходим к запросу количества игр
+            await state.set_state(AdminStates.waiting_for_player_games)
+
+            await AdminMessageSender().send_or_edit_message(
+                target=callback,
+                text=self.locale.ui.get("admin_add_player_games_desc"),
+                reply_markup=self.keyboard.create_single_button(
+                    text=self.locale.buttons.get("btn_cancel"),
+                    callback_data="cancel_operation"
+                )
+            )
+            await callback.answer("✅ Загрузка фото пропущена")
+
+        except Exception as e:
+            self.logger.error(f"Ошибка при пропуске фото: {str(e)}")
+            await callback.answer("❌ Ошибка при пропуске фото")
+
     async def process_player_games_input(self, message: Message, state: FSMContext) -> None:
         """
         Обработка ввода количества сыгранных игр
@@ -175,7 +267,6 @@ class PlayersManagerService:
         :param message: Сообщение с количеством игр
         :param state: Состояние FSM
         """
-        user_id = message.from_user.id
         games_input = message.text.strip()
 
         try:
@@ -198,6 +289,7 @@ class PlayersManagerService:
             state_data = await state.get_data()
             first_name = state_data.get('player_first_name')
             last_name = state_data.get('player_last_name')
+            nickname = state_data.get('player_nickname')
             photo_file_id = state_data.get('player_photo_file_id')
 
             if not first_name or not last_name:
@@ -212,11 +304,11 @@ class PlayersManagerService:
                 return
 
             # Рассчитываем уровни на основе количества игр
-            numeric_level = await self.players_handler.calculate_numeric_level_from_games(games_played)
-            text_level = await self.players_handler.calculate_text_level_from_games(games_played)
+            level = await self.players_handler.calculate_level_from_games(games_played)
+            rank_player = await self.players_handler.calculate_rank_player_from_games(games_played)
 
             self.logger.info(f"Рассчитаны уровни для игрока: games={games_played}, "
-                             f"numeric_level={numeric_level}, text_level={text_level}")
+                           f"level={level}, rank_player={rank_player}")
 
             # Сохраняем фото во временный файл
             photo_path = None
@@ -227,10 +319,11 @@ class PlayersManagerService:
             result = await self.players_handler.add_player(
                 first_name=first_name,
                 last_name=last_name,
+                nickname=nickname,
                 photo_path=photo_path,
                 games_played=games_played,
-                player_level=text_level,
-                numeric_level=numeric_level
+                rank_player=rank_player,
+                level=level
             )
 
             # Очищаем состояние
@@ -238,14 +331,16 @@ class PlayersManagerService:
 
             # Отправляем результат
             if result == ErrorCode.SUCCESSFUL:
-                await message.answer(
-                    self.locale.ui.get("admin_player_add_success").format(
+                text = self.locale.ui.get("admin_player_add_success").format(
                         first_name=first_name,
                         last_name=last_name,
+                        nickname=f"\n🏷️ Никнейм: {nickname}" if nickname else "",
                         games_played=games_played,
-                        level=text_level.value,
-                        numeric_level=numeric_level
-                    ),
+                        rank_player=rank_player.value,
+                        level=level
+                    )
+                await message.answer(
+                    text=text,
                     reply_markup=self.keyboard.back_to_players_management_keyboard
                 )
                 self.logger.info(f"Игрок {first_name} {last_name} успешно добавлен")
@@ -275,9 +370,6 @@ class PlayersManagerService:
         :param last_name: Фамилия игрока
         :return: Путь к сохраненному файлу
         """
-        import tempfile
-        import os
-
         try:
             # Создаем временный файл
             safe_first_name = "".join(c for c in first_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
@@ -366,12 +458,16 @@ class PlayersManagerService:
         players_text = []
 
         for i, player in enumerate(players, 1):
-            player_text = (
-                f"{i}. {player.first_name} {player.last_name}\n"
-                f"   🎮 Игр: {player.games_played} | "
-                f"📊 Уровень: {player.player_level.value} ({player.numeric_level})\n"
+            player_stat = self.locale.ui.get("user_statistics_desc").format(
+                id=i,
+                first_name=player.first_name,
+                last_name=player.last_name,
+                nickname=f"({player.nickname})" if player.nickname else "",
+                games_played=player.games_played,
+                rank_player=player.rank_player.value,
+                level=player.level
             )
-            players_text.append(player_text)
+            players_text.append(player_stat)
 
         return header + "\n".join(players_text)
 
@@ -395,7 +491,7 @@ class PlayersManagerService:
                     reply_markup=self.keyboard.back_to_players_management_keyboard
                 )
             else:
-                players_text = self._format_players_list_for_deletion(players)
+                players_text = self.locale.ui.get("admin_delete_players_header")
                 await AdminMessageSender().send_or_edit_message(
                     target=callback,
                     text=players_text,
@@ -411,36 +507,11 @@ class PlayersManagerService:
 
         await callback.answer()
 
-    def _format_players_list_for_deletion(self, players: list) -> str:
-        """
-        Форматирует список игроков для удаления
-
-        :param players: Список игроков
-        :return: Отформатированный текст
-        """
-        if not players:
-            return self.locale.ui.get("admin_no_players_found")
-
-        header = self.locale.ui.get("admin_delete_players_header") + "\n\n"
-        players_text = []
-
-        for i, player in enumerate(players, 1):
-            player_text = (
-                f"{i}. {player.first_name} {player.last_name}\n"
-                f"   🎮 Сыграно игр: {player.games_played}\n"
-                f"   📊 Уровень: {player.player_level.value}\n"
-                f"   🔢 Числовой уровень: {player.numeric_level}\n"
-            )
-            players_text.append(player_text)
-
-        return header + "\n".join(players_text)
-
-    async def delete_player_callback(self, callback: CallbackQuery, state: FSMContext) -> None:
+    async def delete_player_callback(self, callback: CallbackQuery) -> None:
         """
         Обработчик кнопки удаления конкретного игрока
 
         :param callback: Callback запрос от кнопки
-        :param state: Состояние FSM
         """
         try:
             player_id = int(callback.data.replace("delete_player_", ""))
@@ -469,12 +540,11 @@ class PlayersManagerService:
 
         await callback.answer()
 
-    async def confirm_delete_player_callback(self, callback: CallbackQuery, state: FSMContext) -> None:
+    async def confirm_delete_player_callback(self, callback: CallbackQuery) -> None:
         """
         Обработчик подтверждения удаления игрока
 
         :param callback: Callback запрос от кнопки
-        :param state: Состояние FSM
         """
         try:
             player_id = int(callback.data.replace("confirm_delete_player_", ""))

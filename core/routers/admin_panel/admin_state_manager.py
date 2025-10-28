@@ -10,6 +10,7 @@ class AdminStates(StatesGroup):
     waiting_for_username = State()
     waiting_for_role = State()
     waiting_for_delete_confirmation = State()
+    waiting_for_player_nickname = State()
     waiting_for_player_name = State()  # Для имени игрока
     waiting_for_player_photo = State()  # Для фото игрока
     waiting_for_player_games = State()  # Для количества игр

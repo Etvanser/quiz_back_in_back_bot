@@ -9,8 +9,17 @@ from logger import Logger
 
 
 class UsersManagerService:
+    """
+    Сервис управления пользователями
+    """
 
     def __init__(self, user_handler: DatabaseUserHandler, keyboard: AdminKeyboardBuilder):
+        """
+        Инициализация сервиса управления пользователями
+
+        :param user_handler: Обработчик базы данных пользователей
+        :param keyboard: Построитель клавиатур для админ-панели
+        """
         self.locale = Locale()
         self.logger = Logger().get_logger()
         self.keyboard = keyboard
@@ -83,6 +92,8 @@ class UsersManagerService:
     async def handle_invalid_input(self, message: Message) -> None:
         """
         Обработка некорректного ввода (не пересланное сообщение)
+
+        :param message: Сообщение от администратора
         """
         admin_id = message.from_user.id
         self.logger.warning(f"Админ {admin_id} отправил непересланное сообщение: {message.text}")
@@ -187,7 +198,7 @@ class UsersManagerService:
         """
         Обработка нажатия кнопки "Удалить пользователя"
 
-         :param callback: Callback запрос от кнопки
+        :param callback: Callback запрос от кнопки
         """
         self.logger.info(f"Админ {callback.from_user.id} нажал кнопку 'Удалить пользователя'")
 
@@ -248,7 +259,7 @@ class UsersManagerService:
             await AdminMessageSender().send_or_edit_message(
                 target=callback,
                 text=text,
-                reply_markup=self.keyboard.create_confirmation_delete_user_keyboard(user_id)
+                reply_markup=self.keyboard.confirm_delete_user_keyboard(user_id)
             )
             await state.set_state(AdminStates.waiting_for_delete_confirmation)
 
@@ -265,7 +276,7 @@ class UsersManagerService:
         """
         try:
             # Извлекаем ID пользователя из callback data
-            user_id = int(callback.data.split("_")[2])
+            user_id = int(callback.data.replace("confirm_delete_user_", ""))
             self.logger.info(f"Админ {callback.from_user.id} подтвердил удаление пользователя {user_id}")
 
             user_exists = await self.user_handler.user_exists(user_id)
@@ -408,6 +419,9 @@ class UsersManagerService:
     async def process_role_callback(self, callback: CallbackQuery, state: FSMContext) -> None:
         """
         Обработка выбора роли через callback
+
+        :param callback: Callback запрос от кнопки
+        :param state: Состояние FSM
         """
         self.logger.debug(f"Обработка callback выбора роли от админа {callback.from_user.id}: {callback.data}")
 
@@ -442,7 +456,7 @@ class UsersManagerService:
             if result == ErrorCode.SUCCESSFUL:
                 text = self.locale.ui.get("user_add_successful_desc").format(
                     user_id=user_id,
-                    username = username if username else "не указан",
+                    username=username if username else "не указан",
                     role="Пользователь" if role == UserRole.USER else "Админ"
                 )
 
