@@ -1,27 +1,56 @@
 from dataclasses import dataclass
-from enum import Enum
 from pathlib import Path
 from typing import Optional
 import uuid
 
-from const import PHOTOS_DIR
+from const import PHOTOS_DIR, PathLike, CONFIG_LEVEL_PLAYERS
 from core.database_manager.base_database_handler import BaseDatabaseHandler
 from core.database_manager.const_bd import TableBD
 from errors import ErrorCode
 from logger import Logger
-
+from utils import load_config
 
 logger = Logger().get_logger()
 
 
-class RankPlayer(str, Enum):
+@dataclass
+class LevelConfig:
     """
-    Текстовые уровни игроков
+    Конфигурация уровней и рангов игроков
     """
-    BEGINNER = "Новичок"
-    INTERMEDIATE = "Любитель"
-    ADVANCED = "Профессионал"
-    EXPERT = "Эксперт"
+    level_divider: int
+    rank_divider: int
+    ranks: dict[str, str]
+
+    @classmethod
+    def from_dict(cls, config_data: PathLike = CONFIG_LEVEL_PLAYERS) -> 'LevelConfig':
+        """
+        Создает конфиг из словаря
+
+        :param config_data: Конифг
+        :return: Экземпляр LevelConfig
+        """
+        config_data = load_config(config_data).get("config_level")
+        level_divider = config_data.get("level_divider", 5)
+        rank_divider = config_data.get("rank_divider", 25)
+        ranks = config_data.get("ranks", {})
+
+        return cls(
+            level_divider=level_divider,
+            rank_divider=rank_divider,
+            ranks=ranks
+        )
+
+    def get_rank_by_tier(self, tier: int) -> str:
+        """
+        Получает название ранга по tier
+
+        :param tier: Числовой tier
+        :return: Название ранга
+        """
+        tier_str = str(tier)
+
+        return self.ranks.get(tier_str)
 
 
 @dataclass
@@ -32,10 +61,10 @@ class QuizPlayer:
     player_id: int
     first_name: str
     last_name: str
+    rank_player: LevelConfig
     nickname: Optional[str] = None
     photo: Optional[str] = None
     games_played: int = 0
-    rank_player: RankPlayer = RankPlayer.BEGINNER
     level: int = 1
 
 
@@ -50,6 +79,7 @@ class DatabaseQuizPlayerHandler(BaseDatabaseHandler):
         """
         super().__init__()
         self._table_name = TableBD.QUIZ_PLAYERS.value
+        self.config_level = LevelConfig.from_dict()
         PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
         self.allowed_extensions = {'.jpg', '.jpeg', '.png'}
 
@@ -60,8 +90,8 @@ class DatabaseQuizPlayerHandler(BaseDatabaseHandler):
             nickname: Optional[str] = None,
             photo_path: Optional[str] = None,
             games_played: int = 0,
-            rank_player: RankPlayer = RankPlayer.BEGINNER,
-            level: int = 0
+            rank_player: Optional[str] = None,
+            level: Optional[int] = None
     ) -> ErrorCode:
         """
         Добавление нового игрока квиза
@@ -77,6 +107,12 @@ class DatabaseQuizPlayerHandler(BaseDatabaseHandler):
         :return: Код результата операции
         """
         try:
+            if level is None:
+                level = await self.calculate_level_from_games(games_played)
+
+            if rank_player is None:
+                rank_player = await self.calculate_rank_player_from_games(games_played)
+
             if level < 0:
                 logger.warning(f"Некорректный цифровой уровень: {level}")
                 return ErrorCode.INVALID_INPUT
@@ -104,7 +140,7 @@ class DatabaseQuizPlayerHandler(BaseDatabaseHandler):
                 (first_name, last_name, nickname, photo, games_played, rank_player, level)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (first_name, last_name, nickname, final_photo_path, games_played, rank_player.value, level)
+                (first_name, last_name, nickname, final_photo_path, games_played, rank_player, level)
             )
 
             logger.info(f"Игрок {first_name} {last_name} успешно добавлен")
@@ -297,7 +333,7 @@ class DatabaseQuizPlayerHandler(BaseDatabaseHandler):
                 nickname=player_data.get("nickname"),
                 photo=player_data.get("photo"),
                 games_played=player_data.get("games_played"),
-                rank_player=RankPlayer(player_data.get("rank_player")),
+                rank_player=player_data.get("rank_player"),
                 level=player_data.get("level")
             )
 
@@ -326,7 +362,7 @@ class DatabaseQuizPlayerHandler(BaseDatabaseHandler):
                     nickname=player_data.get("nickname"),
                     photo=player_data.get("photo"),
                     games_played=player_data.get("games_played"),
-                    rank_player=RankPlayer(player_data.get("rank_player")),
+                    rank_player=player_data.get("rank_player"),
                     level=player_data.get("level")
                 ))
 
@@ -344,7 +380,7 @@ class DatabaseQuizPlayerHandler(BaseDatabaseHandler):
             nickname: Optional[str] = None,
             photo: Optional[str] = None,
             games_played: Optional[int] = None,
-            rank_player: Optional[RankPlayer] = None,
+            rank_player: Optional[str] = None,
             level: Optional[int] = None
     ) -> ErrorCode:
         """
@@ -386,7 +422,7 @@ class DatabaseQuizPlayerHandler(BaseDatabaseHandler):
                 params.append(games_played)
             if rank_player is not None:
                 update_fields.append("rank_player = ?")
-                params.append(rank_player.value)
+                params.append(rank_player)
             if level is not None:
                 update_fields.append("level = ?")
                 params.append(level)
@@ -418,7 +454,7 @@ class DatabaseQuizPlayerHandler(BaseDatabaseHandler):
         """
         return await self.update_player(player_id, level=level)
 
-    async def update_rank_player(self, player_id: int, rank_player: RankPlayer) -> ErrorCode:
+    async def update_rank_player(self, player_id: int, rank_player: str) -> ErrorCode:
         """
         Обновление только текстового уровня игрока
 
@@ -435,26 +471,22 @@ class DatabaseQuizPlayerHandler(BaseDatabaseHandler):
         :param games_played: Количество сыгранных игр
         :return: Цифровой уровень (без ограничения)
         """
-        return games_played // 5
+        return games_played // self.config_level.level_divider
 
-    async def calculate_rank_player_from_games(self, games_played: int) -> RankPlayer:
+    async def calculate_rank_player_from_games(self, games_played: int) -> str:
         """
         Рассчитывает текстовый уровень на основе количества сыгранных игр
 
         :param games_played: Количество сыгранных игр
         :return: Текстовый уровень игрока
         """
-        # Каждые 25 игр повышают текстовый уровень
-        level_tier = games_played // 25
+        if self.config_level.rank_divider <= 0:
+            logger.warning("rank_divider в конфиге должен быть больше 0")
+            return self.config_level.get_rank_by_tier(0)
 
-        if level_tier >= 3:  # 75+ игр
-            return RankPlayer.EXPERT
-        elif level_tier == 2:  # 50-74 игр
-            return RankPlayer.ADVANCED
-        elif level_tier == 1:  # 25-49 игр
-            return RankPlayer.INTERMEDIATE
-        else:  # 0-24 игр
-            return RankPlayer.BEGINNER
+        level_tier = games_played // self.config_level.rank_divider
+
+        return self.config_level.get_rank_by_tier(level_tier)
 
     async def auto_update_levels(self, player_id: int) -> ErrorCode:
         """
@@ -501,3 +533,55 @@ class DatabaseQuizPlayerHandler(BaseDatabaseHandler):
         except Exception as e:
             logger.error(f"Ошибка при увеличении счетчика игр для {player_id}: {e}")
             return ErrorCode.DATABASE_ERROR
+
+    async def update_all_players_levels(self) -> tuple[int, int]:
+        """
+        Обновляет уровни и ранги у всех игроков на основе текущей формулы расчета
+
+        :return: Кортеж (количество обновленных игроков, количество ошибок)
+        """
+        updated_count = 0
+        error_count = 0
+
+        try:
+            # Получаем всех игроков
+            players = await self.get_all_players()
+
+            for player in players:
+                try:
+                    # Пересчитываем уровни на основе текущего количества игр
+                    new_level = await self.calculate_level_from_games(player.games_played)
+                    new_rank_player = await self.calculate_rank_player_from_games(player.games_played)
+
+                    # Обновляем только если уровни изменились
+                    if new_level != player.level or new_rank_player != player.rank_player:
+                        result = await self.update_player(
+                            player_id=player.player_id,
+                            rank_player=new_rank_player,
+                            level=new_level
+                        )
+
+                        if result == ErrorCode.SUCCESSFUL:
+                            updated_count += 1
+                            logger.info(
+                                f"Обновлены уровни игрока {player.first_name} {player.last_name}: "
+                                f"уровень {player.level}→{new_level}, "
+                                f"ранг {player.rank_player}→{new_rank_player}"
+                            )
+                        else:
+                            error_count += 1
+                            logger.error(
+                                f"Ошибка обновления уровней игрока {player.player_id}: {result}"
+                            )
+
+                except Exception as e:
+                    error_count += 1
+                    logger.error(f"Ошибка при обновлении игрока {player.player_id}: {str(e)}")
+                    continue
+
+            logger.info(f"Массовое обновление уровней завершено: обновлено {updated_count}, ошибок {error_count}")
+            return updated_count, error_count
+
+        except Exception as e:
+            logger.error(f"Критическая ошибка при массовом обновлении уровней: {str(e)}")
+            return 0, len(players)

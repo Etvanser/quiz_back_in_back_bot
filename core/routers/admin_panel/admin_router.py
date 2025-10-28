@@ -162,6 +162,7 @@ class AdminRouter(BaseRouter):
         self.router.callback_query(F.data == "cancel_delete_player")(self.players_manager.cancel_delete_player_callback)
         self.router.callback_query(F.data == "skip_photo")(self.players_manager.skip_photo_callback)
         self.router.callback_query(F.data == "skip_nickname")(self.players_manager.skip_nickname_callback)
+        self.router.callback_query(F.data == "update_levels_cmd")(self.players_manager.update_all_levels_callback)
 
         self.router.message(AdminStates.waiting_for_player_nickname)(self.players_manager.process_player_nickname_input)
         self.router.message(AdminStates.waiting_for_player_name)(self.players_manager.process_player_name_input)

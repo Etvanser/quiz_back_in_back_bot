@@ -58,8 +58,9 @@ class AdminKeyboardBuilder:
         buttons = [
             [InlineKeyboardButton(text="➕ Добавить игрока", callback_data="add_player_cmd")],
             [InlineKeyboardButton(text="📋 Список игроков", callback_data="players_list_cmd")],
+            [InlineKeyboardButton(text="🔄 Обновить уровни", callback_data="update_levels_cmd")],
             [InlineKeyboardButton(text="🗑️ Удалить игрока", callback_data="delete_players_cmd")],
-            [InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_admin")]
+            [InlineKeyboardButton(text=self.locale.buttons.get("btn_back"), callback_data="back_to_admin")]
         ]
         return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -69,7 +70,7 @@ class AdminKeyboardBuilder:
         Клавиатура для возврата в меню управления игроками
         """
         buttons = [
-            [InlineKeyboardButton(text="◀️ Назад к управлению игроками", callback_data="manage_players_cmd")]
+            [InlineKeyboardButton(text=self.locale.buttons.get("btn_back"), callback_data="manage_players_cmd")]
         ]
         return InlineKeyboardMarkup(inline_keyboard=buttons)
 

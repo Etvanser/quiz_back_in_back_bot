@@ -336,7 +336,7 @@ class PlayersManagerService:
                         last_name=last_name,
                         nickname=f"\n🏷️ Никнейм: {nickname}" if nickname else "",
                         games_played=games_played,
-                        rank_player=rank_player.value,
+                        rank_player=rank_player,
                         level=level
                     )
                 await message.answer(
@@ -464,7 +464,7 @@ class PlayersManagerService:
                 last_name=player.last_name,
                 nickname=f"({player.nickname})" if player.nickname else "",
                 games_played=player.games_played,
-                rank_player=player.rank_player.value,
+                rank_player=player.rank_player,
                 level=player.level
             )
             players_text.append(player_stat)
@@ -595,3 +595,55 @@ class PlayersManagerService:
         self.logger.info(f"Админ {callback.from_user.id} отменил операцию")
         await state.clear()
         await self.manage_players_panel(callback, state)
+
+    async def update_all_levels_callback(self, callback: CallbackQuery, state: FSMContext) -> None:
+        """
+        Обработчик кнопки обновления уровней всех игроков
+
+        :param callback: Callback запрос от кнопки
+        :param state: Состояние FSM
+        """
+        self.logger.info(f"Админ {callback.from_user.id} запустил обновление уровней всех игроков")
+        await state.clear()
+
+        try:
+            # Показываем сообщение о начале процесса
+            await AdminMessageSender().send_or_edit_message(
+                target=callback,
+                text="🔄 Начинаю обновление уровней всех игроков..."
+            )
+
+            # Запускаем обновление
+            updated_count, error_count = await self.players_handler.update_all_players_levels()
+
+            # Формируем результат
+            if error_count == 0:
+                if updated_count == 0:
+                    text = "✅ У всех игроков уже актуальные уровни и ранги"
+                else:
+                    text = f"✅ Успешно обновлены уровни и ранги для {updated_count} игроков"
+            else:
+                text = (
+                    f"⚠️ Обновление завершено с ошибками:\n"
+                    f"• Успешно обновлено: {updated_count}\n"
+                    f"• Ошибок: {error_count}"
+                )
+
+            await AdminMessageSender().send_or_edit_message(
+                target=callback,
+                text=text,
+                reply_markup=self.keyboard.back_to_players_management_keyboard
+            )
+
+            self.logger.info(f"Обновление уровней завершено: {updated_count} успешно, {error_count} ошибок")
+
+        except Exception as e:
+            self.logger.error(f"Ошибка при обновлении уровней игроков: {str(e)}")
+            await callback.message.answer(
+                "❌ Произошла ошибка при обновлении уровней",
+                reply_markup=self.keyboard.back_to_players_management_keyboard
+            )
+
+        await callback.answer()
+
+

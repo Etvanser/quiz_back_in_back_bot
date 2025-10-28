@@ -16,9 +16,10 @@ LOGGER_DIR = ROOT_DIR / "logs"
 BD_CONFIG = CONFIG_DIR / "config_struct_bd.json"
 # Каталог БД
 BD_DIR = ROOT_DIR / "database"
-
 # Каталог с фото игроков
 PHOTOS_DIR = ROOT_DIR / "photos"
+# Конфиг уровней игроков
+CONFIG_LEVEL_PLAYERS = CONFIG_DIR / "config_level_players.json"
 
 
 # Конфиг модулей локализации
